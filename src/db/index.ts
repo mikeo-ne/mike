@@ -1,15 +1,17 @@
 /**
  * Database connection manager (server-only).
  *
- * - If `DATABASE_URL` is set → connects to a real Postgres server via the
- *   `postgres` (postgres.js) driver.
+ * - If `DATABASE_URL` (or `POSTGRES_URL`) is set → connects to a real
+ *   Postgres server via the `postgres` (postgres.js) driver.
  * - Otherwise → falls back to PGlite, a real Postgres engine running embedded
  *   (file-backed at ./data/pglite), so the app works with zero setup.
  *
  * Both paths speak the Postgres dialect, so the Drizzle schema, queries, and
- * the CREATE TABLE statements below are identical either way.
+ * the DDL below are identical either way.
  *
- * On first use it also ensures the schema exists and seeds global prompts.
+ * On first use it also ensures the schema exists (including idempotent
+ * migrations for databases created by earlier versions), migrates legacy
+ * preferences, and seeds global prompts.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -74,6 +76,14 @@ function createPostgresDb(url: string): Database {
  * externally-managed databases). Safe to run on every cold start.
  */
 async function ensureSchema(db: Database): Promise<void> {
+  // --- Migrations for pre-existing databases (run before CREATEs). ---
+  await db.execute(
+    sql`ALTER TABLE IF EXISTS "chat_messages" RENAME TO "conversations";`,
+  );
+  await db.execute(
+    sql`ALTER INDEX IF EXISTS "chat_messages_session_idx" RENAME TO "conversations_session_idx";`,
+  );
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "chat_sessions" (
       "id" uuid PRIMARY KEY,
@@ -87,7 +97,7 @@ async function ensureSchema(db: Database): Promise<void> {
     );
   `);
   await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "chat_messages" (
+    CREATE TABLE IF NOT EXISTS "conversations" (
       "id" uuid PRIMARY KEY,
       "session_id" uuid NOT NULL REFERENCES "chat_sessions"("id") ON DELETE CASCADE,
       "role" text NOT NULL,
@@ -110,6 +120,53 @@ async function ensureSchema(db: Database): Promise<void> {
     );
   `);
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "user_preferences" (
+      "profile_id" text PRIMARY KEY,
+      "timezone" text,
+      "scheduling_rules" text,
+      "system_instructions" text,
+      "workday_start" text,
+      "workday_end" text,
+      "preferred_calendar" text NOT NULL DEFAULT 'local',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  // Legacy table (replaced by user_preferences): create-if-missing so the
+  // migration below works on fresh databases too, then migrate + drop.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "profile_settings" (
+      "profile_id" text PRIMARY KEY,
+      "timezone" text,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_context" (
+      "id" uuid PRIMARY KEY,
+      "profile_id" text NOT NULL,
+      "title" text NOT NULL,
+      "kind" text NOT NULL DEFAULT 'note',
+      "content" text NOT NULL DEFAULT '',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "tasks" (
+      "id" uuid PRIMARY KEY,
+      "profile_id" text NOT NULL,
+      "title" text NOT NULL,
+      "notes" text,
+      "status" text NOT NULL DEFAULT 'open',
+      "priority" text NOT NULL DEFAULT 'medium',
+      "due_at" timestamptz,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "calendar_events" (
       "id" uuid PRIMARY KEY,
       "profile_id" text NOT NULL,
@@ -119,14 +176,6 @@ async function ensureSchema(db: Database): Promise<void> {
       "starts_at" timestamptz NOT NULL,
       "ends_at" timestamptz,
       "all_day" boolean NOT NULL DEFAULT false,
-      "created_at" timestamptz NOT NULL DEFAULT now(),
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "profile_settings" (
-      "profile_id" text PRIMARY KEY,
-      "timezone" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
     );
@@ -165,8 +214,16 @@ async function ensureSchema(db: Database): Promise<void> {
       ON "chat_sessions" ("profile_id");
   `);
   await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "chat_messages_session_idx"
-      ON "chat_messages" ("session_id");
+    CREATE INDEX IF NOT EXISTS "conversations_session_idx"
+      ON "conversations" ("session_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "workspace_context_profile_idx"
+      ON "workspace_context" ("profile_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "tasks_profile_status_idx"
+      ON "tasks" ("profile_id", "status");
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "calendar_events_profile_starts_idx"
@@ -176,12 +233,25 @@ async function ensureSchema(db: Database): Promise<void> {
     CREATE INDEX IF NOT EXISTS "tool_executions_session_idx"
       ON "tool_executions" ("session_id");
   `);
+
+  // --- Data migration: profile_settings -> user_preferences, then drop. ---
+  await db.execute(sql`
+    INSERT INTO "user_preferences" ("profile_id", "timezone", "created_at", "updated_at")
+    SELECT "profile_id", "timezone", now(), now() FROM "profile_settings"
+    ON CONFLICT ("profile_id") DO NOTHING;
+  `);
+  await db.execute(sql`DROP TABLE IF EXISTS "profile_settings";`);
 }
 
 async function seedGlobalPrompts(db: Database): Promise<void> {
-  // Top up by name so new seeds (e.g. the MIKE persona) appear on existing
-  // databases too — never touching user-created prompts. Uses only the
-  // portable query builder: raw execute() result shapes differ per driver.
+  // Rename the legacy seed to the current "Mike" branding when present.
+  await db
+    .update(schema.systemPrompts)
+    .set({ name: 'Mike — Executive Assistant', updatedAt: new Date() })
+    .where(eq(schema.systemPrompts.name, 'MIKE — Executive Assistant'));
+  // Top up by name so new seeds appear on existing databases too — never
+  // touching user-created prompts. Uses only the portable query builder:
+  // raw execute() result shapes differ per driver.
   const globals = await db
     .select({
       id: schema.systemPrompts.id,

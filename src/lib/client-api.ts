@@ -53,6 +53,40 @@ export interface CalendarConnectionDto {
   needsReconnect: boolean;
 }
 
+export interface AgendaDto {
+  date: string;
+  timezone: string;
+  calendar?: string;
+  day_starts_at: string;
+  day_ends_at: string;
+  count: number;
+  scheduled_minutes: number;
+  events: CalendarEventDto[];
+}
+
+export interface WorkspaceItemDto {
+  id: string;
+  profileId: string;
+  title: string;
+  kind: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkspaceKind = 'note' | 'project' | 'guideline' | 'brief';
+
+export interface TaskDto {
+  id: string;
+  title: string;
+  notes: string | null;
+  status: string;
+  priority: string;
+  due_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface HealthDto {
   ok: boolean;
   provider: 'openai' | 'anthropic';
@@ -62,10 +96,18 @@ export interface HealthDto {
   time: string;
 }
 
-export interface SettingsDto {
+export interface PreferencesDto {
   timezone: string | null;
+  schedulingRules: string | null;
+  systemInstructions: string | null;
+  workdayStart: string | null;
+  workdayEnd: string | null;
+  preferredCalendar: 'local' | 'google';
   updatedAt?: string | null;
 }
+
+/** Backwards-compatible alias (settings == preferences). */
+export type SettingsDto = PreferencesDto;
 
 async function parse<T>(res: Response): Promise<T> {
   const data = (await res.json().catch(() => ({}))) as {
@@ -159,6 +201,15 @@ export const api = {
       parse<{ deleted: boolean }>,
     ),
 
+  agenda: (params?: { calendar?: string; date?: string; timezone?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.calendar) q.set('calendar', params.calendar);
+    if (params?.date) q.set('date', params.date);
+    if (params?.timezone) q.set('timezone', params.timezone);
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return fetch(`/api/calendar/agenda${suffix}`).then(parse<AgendaDto>);
+  },
+
   listConnections: () =>
     fetch('/api/calendar/connections')
       .then(parse<{ connections: CalendarConnectionDto[] }>)
@@ -168,14 +219,84 @@ export const api = {
       method: 'DELETE',
     }).then(parse<{ deleted: boolean }>),
 
+  listWorkspace: (params?: { query?: string; kind?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.query) q.set('query', params.query);
+    if (params?.kind) q.set('kind', params.kind);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return fetch(`/api/workspace${suffix}`).then(
+      parse<{ items: WorkspaceItemDto[]; count: number }>,
+    );
+  },
+  createWorkspace: (input: { title: string; kind?: WorkspaceKind; content?: string }) =>
+    fetch('/api/workspace', json(input)).then(
+      parse<{ item: WorkspaceItemDto }>,
+    ),
+  patchWorkspace: (
+    id: string,
+    patch: { title?: string; kind?: WorkspaceKind; content?: string },
+  ) =>
+    fetch(`/api/workspace/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(parse<{ item: WorkspaceItemDto }>),
+  deleteWorkspace: (id: string) =>
+    fetch(`/api/workspace/${id}`, { method: 'DELETE' }).then(
+      parse<{ deleted: boolean }>,
+    ),
+
+  listTasks: (params?: { status?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return fetch(`/api/tasks${suffix}`).then(
+      parse<{ tasks: TaskDto[]; count: number }>,
+    );
+  },
+  createTask: (input: {
+    title: string;
+    notes?: string;
+    priority?: string;
+    due_at?: string;
+  }) => fetch('/api/tasks', json(input)).then(parse<{ task: TaskDto }>),
+  patchTask: (
+    id: string,
+    patch: {
+      title?: string;
+      notes?: string | null;
+      status?: string;
+      priority?: string;
+      due_at?: string | null;
+    },
+  ) =>
+    fetch(`/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(parse<{ task: TaskDto }>),
+  deleteTask: (id: string) =>
+    fetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(
+      parse<{ deleted: boolean }>,
+    ),
+
   getSettings: () =>
     fetch('/api/settings')
-      .then(parse<{ settings: SettingsDto }>)
+      .then(parse<{ settings: PreferencesDto }>)
       .then((r) => r.settings),
-  patchSettings: (patch: { timezone: string | null }) =>
+  patchSettings: (patch: {
+    timezone?: string | null;
+    schedulingRules?: string | null;
+    systemInstructions?: string | null;
+    workdayStart?: string | null;
+    workdayEnd?: string | null;
+    preferredCalendar?: 'local' | 'google';
+  }) =>
     fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
-    }).then(parse<{ settings: SettingsDto }>),
+    }).then(parse<{ settings: PreferencesDto }>),
 };

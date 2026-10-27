@@ -5,6 +5,9 @@
 import './time';
 import './calendar';
 import './agenda';
+import './schedule';
+import './workspace';
+import './tasks';
 
 export {
   defineTool,

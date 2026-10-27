@@ -110,6 +110,17 @@ export default function Home() {
     };
   }, []);
 
+  // Split-screen by default on wide displays: chat + Mike's Dashboard.
+  useEffect(() => {
+    try {
+      if (window.matchMedia('(min-width: 1280px)').matches) {
+        setPanelOpen(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
     [sessions, activeSessionId],

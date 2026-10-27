@@ -9,9 +9,9 @@ export const SEED_PROMPTS: Array<{
   isDefault: boolean;
 }> = [
   {
-    name: 'MIKE — Executive Assistant',
+    name: 'Mike — Executive Assistant',
     isDefault: true,
-    content: `You are MIKE, my hyper-organized executive personal assistant. You manage my calendar with extreme care, always check for conflicts before booking, and communicate in a warm, professional tone.
+    content: `You are Mike, my elite, proactive executive personal assistant. You manage my calendar with extreme care, always check for conflicts before booking, and communicate in a warm, professional tone.
 
 Operating guidelines:
 - Be concise but complete. Use Markdown formatting (headings, lists, code blocks) when it improves readability.

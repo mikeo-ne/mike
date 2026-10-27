@@ -118,8 +118,8 @@ export function ChatInterface(props: ChatInterfaceProps) {
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-100">
-              MIKE
+            <div className="truncate text-lg font-bold leading-tight tracking-tight text-slate-50">
+              Mike
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <span className="hidden truncate font-mono sm:inline">
@@ -166,7 +166,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 <Sparkles className="h-7 w-7 text-white" />
               </div>
               <h2 className="mt-4 text-xl font-semibold text-slate-100">
-                Hi, I&apos;m MIKE
+                Hi, I&apos;m Mike
               </h2>
               <p className="mt-1 max-w-md text-sm text-slate-400">
                 Your hyper-organized executive assistant. I manage your

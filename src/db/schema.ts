@@ -2,13 +2,22 @@
  * Database schema (Postgres dialect, via Drizzle ORM).
  *
  * Tables:
- *  - chat_sessions   — user chat sessions (conversations), owned by an
- *                        anonymous per-browser profile id.
- *  - chat_messages   — full transcript incl. assistant tool calls and tool
- *                        results, so multi-step agent turns can be rebuilt.
- *  - system_prompts  — reusable system prompts (global seeds + user created).
- *  - calendar_events — events the agent manages through tool calls.
- *  - tool_executions — audit log of every tool invocation.
+ *  - chat_sessions        — conversation threads, owned by an anonymous
+ *                             per-browser profile id.
+ *  - conversations        — message logs with metadata: user / assistant
+ *                             (+tool_calls JSON) / tool results.
+ *  - system_prompts       — reusable additional instructions (global seeds
+ *                             + user created). Mike's core persona is
+ *                             hardcoded in src/lib/ai/executive.ts.
+ *  - user_preferences     — per-profile memory: timezone, scheduling rules,
+ *                             workday bounds, preferred calendar, and personal
+ *                             system instructions.
+ *  - workspace_context    — user notes, project guidelines, and briefs that
+ *                             Mike references for background and deadlines.
+ *  - tasks                — active task list surfaced on Mike's Dashboard.
+ *  - calendar_events      — local events managed through tools.
+ *  - calendar_connections — encrypted external OAuth tokens (Google).
+ *  - tool_executions      — audit log of every tool invocation.
  *
  * Security notes:
  *  - This module is imported ONLY from server-side code (API routes, tools).
@@ -29,7 +38,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 // ---------------------------------------------------------------------------
-// Chat sessions
+// Chat sessions (threads)
 // ---------------------------------------------------------------------------
 export const chatSessions = pgTable(
   'chat_sessions',
@@ -57,7 +66,7 @@ export type ChatSession = typeof chatSessions.$inferSelect;
 export type NewChatSession = typeof chatSessions.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// Chat messages
+// Conversations (message logs with metadata)
 // ---------------------------------------------------------------------------
 /**
  * role:
@@ -68,8 +77,8 @@ export type NewChatSession = typeof chatSessions.$inferInsert;
  *  - "system"    — reserved (system prompt is injected at runtime, not stored
  *                  per message)
  */
-export const chatMessages = pgTable(
-  'chat_messages',
+export const conversations = pgTable(
+  'conversations',
   {
     id: uuid('id').primaryKey(),
     sessionId: uuid('session_id')
@@ -90,15 +99,15 @@ export const chatMessages = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    sessionIdx: index('chat_messages_session_idx').on(t.sessionId),
+    sessionIdx: index('conversations_session_idx').on(t.sessionId),
   }),
 );
 
-export type ChatMessage = typeof chatMessages.$inferSelect;
-export type NewChatMessage = typeof chatMessages.$inferInsert;
+export type ConversationMessage = typeof conversations.$inferSelect;
+export type NewConversationMessage = typeof conversations.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// System prompts
+// System prompts (additional instructions)
 // ---------------------------------------------------------------------------
 export const systemPrompts = pgTable('system_prompts', {
   id: uuid('id').primaryKey(),
@@ -122,16 +131,21 @@ export type SystemPrompt = typeof systemPrompts.$inferSelect;
 export type NewSystemPrompt = typeof systemPrompts.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// Profile settings
+// User preferences (long-term memory)
 // ---------------------------------------------------------------------------
-/**
- * Per-profile preferences. `timezone` (IANA, e.g. "Africa/Kampala") is
- * injected into the agent's system context so relative dates resolve in the
- * user's own timezone, and is the default for time tools.
- */
-export const profileSettings = pgTable('profile_settings', {
+export const userPreferences = pgTable('user_preferences', {
   profileId: text('profile_id').primaryKey(),
+  /** IANA timezone, e.g. "Africa/Kampala". */
   timezone: text('timezone'),
+  /** Freeform scheduling rules, e.g. "no meetings before 9am". */
+  schedulingRules: text('scheduling_rules'),
+  /** Personal instructions appended to Mike's system prompt. */
+  systemInstructions: text('system_instructions'),
+  /** Workday bounds as "HH:MM" for proactive slot proposals. */
+  workdayStart: text('workday_start'),
+  workdayEnd: text('workday_end'),
+  /** Default calendar source for tools: "local" | "google". */
+  preferredCalendar: text('preferred_calendar').notNull().default('local'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -140,11 +154,75 @@ export const profileSettings = pgTable('profile_settings', {
     .defaultNow(),
 });
 
-export type ProfileSettings = typeof profileSettings.$inferSelect;
-export type NewProfileSettings = typeof profileSettings.$inferInsert;
+export type UserPreferences = typeof userPreferences.$inferSelect;
+export type NewUserPreferences = typeof userPreferences.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// Calendar events
+// Workspace context (notes, guidelines, briefs)
+// ---------------------------------------------------------------------------
+/**
+ * kind: "note" | "project" | "guideline" | "brief" (free text, UI constrains).
+ */
+export const workspaceContext = pgTable(
+  'workspace_context',
+  {
+    id: uuid('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    title: text('title').notNull(),
+    kind: text('kind').notNull().default('note'),
+    content: text('content').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    profileIdx: index('workspace_context_profile_idx').on(t.profileId),
+  }),
+);
+
+export type WorkspaceContext = typeof workspaceContext.$inferSelect;
+export type NewWorkspaceContext = typeof workspaceContext.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+/**
+ * status: "open" | "in_progress" | "done".
+ * priority: "low" | "medium" | "high".
+ */
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    title: text('title').notNull(),
+    notes: text('notes'),
+    status: text('status').notNull().default('open'),
+    priority: text('priority').notNull().default('medium'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    profileStatusIdx: index('tasks_profile_status_idx').on(
+      t.profileId,
+      t.status,
+    ),
+  }),
+);
+
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Calendar events (local)
 // ---------------------------------------------------------------------------
 export const calendarEvents = pgTable(
   'calendar_events',

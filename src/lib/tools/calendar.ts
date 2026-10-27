@@ -1,20 +1,24 @@
 /**
- * Calendar tools — fetch, create, update, and delete events.
+ * Per-action calendar tools (list/create/update/delete).
  *
- * Each tool accepts a `calendar` source: "local" (MIKE's built-in Postgres
- * calendar, default) or "google" (the profile's connected Google Calendar).
- * Every operation is scoped to `ctx.profileId`.
+ * Thin wrappers over the shared local store (`src/lib/calendar/local.ts`)
+ * and the Google client. Mutations also emit a fire-and-forget payload to
+ * the configured CALENDAR_WEBHOOK_URL (mock mode when unset).
  */
-import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, gte, ilike, isNull, lt, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { getDb, schema } from '@/db';
+import {
+  createLocalEvent,
+  deleteLocalEvent,
+  listLocalEvents,
+  updateLocalEvent,
+} from '@/lib/calendar/local';
 import {
   createGoogleEvent,
   deleteGoogleEvent,
   listGoogleEvents,
   updateGoogleEvent,
 } from '@/lib/calendar/google';
+import { notifyCalendarWebhook } from '@/lib/calendar/webhook';
 import { defineTool, type ToolContext } from './registry';
 
 const isoDateTime = z
@@ -31,55 +35,8 @@ const calendarSource = z
   .optional()
   .default('local')
   .describe(
-    'Which calendar to use: "local" (MIKE\'s built-in calendar) or "google" (the connected Google Calendar). Use "google" when the user refers to their Google Calendar.',
+    'Which calendar to use: "local" (Mike\'s built-in calendar) or "google" (the connected Google Calendar). Use "google" when the user refers to their Google Calendar.',
   );
-
-function toDto(e: typeof schema.calendarEvents.$inferSelect) {
-  return {
-    id: e.id,
-    title: e.title,
-    description: e.description,
-    location: e.location,
-    starts_at: e.startsAt.toISOString(),
-    ends_at: e.endsAt ? e.endsAt.toISOString() : null,
-    all_day: e.allDay,
-  };
-}
-
-/**
- * Finds local events overlapping [startsAt, endsAt). Events with no end are
- * treated as 1 hour long for overlap purposes.
- */
-async function findConflicts(
-  profileId: string,
-  startsAt: Date,
-  endsAt: Date,
-  excludeId?: string,
-) {
-  const { db } = await getDb();
-  const candidates = await db
-    .select()
-    .from(schema.calendarEvents)
-    .where(
-      and(
-        eq(schema.calendarEvents.profileId, profileId),
-        lt(schema.calendarEvents.startsAt, endsAt),
-        or(
-          gt(schema.calendarEvents.endsAt, startsAt),
-          isNull(schema.calendarEvents.endsAt),
-        ),
-      ),
-    )
-    .orderBy(asc(schema.calendarEvents.startsAt))
-    .limit(25);
-  return candidates
-    .filter((e) => e.id !== excludeId)
-    .filter((e) => {
-      const existingEnd = e.endsAt ?? new Date(e.startsAt.getTime() + 3600_000);
-      return e.startsAt < endsAt && existingEnd > startsAt;
-    })
-    .map(toDto);
-}
 
 // ---------------------------------------------------------------- list ---
 export const listCalendarEventsSchema = z.object({
@@ -116,31 +73,12 @@ async function listCalendarEvents(
       limit: args.limit,
     });
   }
-  const { db } = await getDb();
-  const conditions = [eq(schema.calendarEvents.profileId, ctx.profileId)];
-  if (args.from) {
-    conditions.push(gte(schema.calendarEvents.startsAt, new Date(args.from)));
-  }
-  if (args.to) {
-    conditions.push(lte(schema.calendarEvents.startsAt, new Date(args.to)));
-  }
-  if (args.query?.trim()) {
-    const q = `%${args.query.trim()}%`;
-    conditions.push(
-      or(
-        ilike(schema.calendarEvents.title, q),
-        ilike(schema.calendarEvents.description, q),
-        ilike(schema.calendarEvents.location, q),
-      )!,
-    );
-  }
-  const rows = await db
-    .select()
-    .from(schema.calendarEvents)
-    .where(and(...conditions))
-    .orderBy(asc(schema.calendarEvents.startsAt))
-    .limit(args.limit);
-  return { events: rows.map(toDto), count: rows.length };
+  return listLocalEvents(ctx.profileId, {
+    from: args.from,
+    to: args.to,
+    query: args.query,
+    limit: args.limit,
+  });
 }
 
 defineTool({
@@ -170,47 +108,36 @@ async function createCalendarEvent(
   args: z.infer<typeof createCalendarEventSchema>,
   ctx: ToolContext,
 ) {
-  if (args.calendar === 'google') {
-    return createGoogleEvent(
-      ctx.profileId,
-      {
-        title: args.title,
-        starts_at: args.starts_at,
-        ends_at: args.ends_at,
-        description: args.description,
-        location: args.location,
-        all_day: args.all_day,
-      },
-      ctx.timezone,
-    );
-  }
-  const startsAt = new Date(args.starts_at);
-  const endsAt = args.ends_at
-    ? new Date(args.ends_at)
-    : new Date(startsAt.getTime() + 60 * 60 * 1000);
-  if (endsAt <= startsAt) {
-    throw new Error('ends_at must be after starts_at.');
-  }
-  const { db } = await getDb();
-  const [row] = await db
-    .insert(schema.calendarEvents)
-    .values({
-      id: randomUUID(),
-      profileId: ctx.profileId,
-      title: args.title,
-      description: args.description ?? null,
-      location: args.location ?? null,
-      startsAt,
-      endsAt,
-      allDay: args.all_day ?? false,
-    })
-    .returning();
-  const conflicts = await findConflicts(ctx.profileId, startsAt, endsAt, row.id);
-  return {
-    event: toDto(row),
-    conflicts,
-    conflicts_count: conflicts.length,
-  };
+  const calendar = args.calendar ?? 'local';
+  const result =
+    calendar === 'google'
+      ? await createGoogleEvent(
+          ctx.profileId,
+          {
+            title: args.title,
+            starts_at: args.starts_at,
+            ends_at: args.ends_at,
+            description: args.description,
+            location: args.location,
+            all_day: args.all_day,
+          },
+          ctx.timezone,
+        )
+      : await createLocalEvent(ctx.profileId, {
+          title: args.title,
+          starts_at: args.starts_at,
+          ends_at: args.ends_at,
+          description: args.description,
+          location: args.location,
+          all_day: args.all_day,
+        });
+  notifyCalendarWebhook({
+    action: 'created',
+    calendar,
+    event: result.event as unknown as Record<string, unknown>,
+    conflicts: result.conflicts as unknown as Array<Record<string, unknown>>,
+  });
+  return result;
 }
 
 defineTool({
@@ -237,73 +164,37 @@ async function updateCalendarEvent(
   args: z.infer<typeof updateCalendarEventSchema>,
   ctx: ToolContext,
 ) {
-  if (args.calendar === 'google') {
-    return updateGoogleEvent(
-      ctx.profileId,
-      args.id,
-      {
-        title: args.title,
-        starts_at: args.starts_at,
-        ends_at: args.ends_at,
-        description: args.description ?? undefined,
-        location: args.location ?? undefined,
-        all_day: args.all_day,
-      },
-      ctx.timezone,
-    );
-  }
-  const { db } = await getDb();
-  const existing = await db
-    .select()
-    .from(schema.calendarEvents)
-    .where(
-      and(
-        eq(schema.calendarEvents.id, args.id),
-        eq(schema.calendarEvents.profileId, ctx.profileId),
-      ),
-    )
-    .limit(1);
-  if (existing.length === 0) {
-    throw new Error(`No calendar event found with id "${args.id}".`);
-  }
-  const startsAt = args.starts_at ? new Date(args.starts_at) : existing[0].startsAt;
-  const endsAt = args.ends_at
-    ? new Date(args.ends_at)
-    : args.starts_at && !args.ends_at
-      ? new Date(startsAt.getTime() + 60 * 60 * 1000)
-      : existing[0].endsAt;
-  if (endsAt && endsAt <= startsAt) {
-    throw new Error('ends_at must be after starts_at.');
-  }
-  const [row] = await db
-    .update(schema.calendarEvents)
-    .set({
-      title: args.title ?? existing[0].title,
-      description: args.description !== undefined ? args.description : existing[0].description,
-      location: args.location !== undefined ? args.location : existing[0].location,
-      startsAt,
-      endsAt,
-      allDay: args.all_day ?? existing[0].allDay,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(schema.calendarEvents.id, args.id),
-        eq(schema.calendarEvents.profileId, ctx.profileId),
-      ),
-    )
-    .returning();
-  const effectiveEnd =
-    row.endsAt ?? new Date(row.startsAt.getTime() + 3600_000);
-  const conflicts =
-    args.starts_at || args.ends_at
-      ? await findConflicts(ctx.profileId, row.startsAt, effectiveEnd, row.id)
-      : [];
-  return {
-    event: toDto(row),
-    conflicts,
-    conflicts_count: conflicts.length,
-  };
+  const calendar = args.calendar ?? 'local';
+  const result =
+    calendar === 'google'
+      ? await updateGoogleEvent(
+          ctx.profileId,
+          args.id,
+          {
+            title: args.title,
+            starts_at: args.starts_at,
+            ends_at: args.ends_at,
+            description: args.description ?? undefined,
+            location: args.location ?? undefined,
+            all_day: args.all_day,
+          },
+          ctx.timezone,
+        )
+      : await updateLocalEvent(ctx.profileId, args.id, {
+          title: args.title,
+          starts_at: args.starts_at,
+          ends_at: args.ends_at,
+          description: args.description ?? undefined,
+          location: args.location ?? undefined,
+          all_day: args.all_day,
+        });
+  notifyCalendarWebhook({
+    action: 'updated',
+    calendar,
+    event: result.event as unknown as Record<string, unknown>,
+    conflicts: result.conflicts as unknown as Array<Record<string, unknown>>,
+  });
+  return result;
 }
 
 defineTool({
@@ -324,23 +215,17 @@ async function deleteCalendarEvent(
   args: z.infer<typeof deleteCalendarEventSchema>,
   ctx: ToolContext,
 ) {
-  if (args.calendar === 'google') {
-    return deleteGoogleEvent(ctx.profileId, args.id);
-  }
-  const { db } = await getDb();
-  const deleted = await db
-    .delete(schema.calendarEvents)
-    .where(
-      and(
-        eq(schema.calendarEvents.id, args.id),
-        eq(schema.calendarEvents.profileId, ctx.profileId),
-      ),
-    )
-    .returning({ id: schema.calendarEvents.id });
-  if (deleted.length === 0) {
-    throw new Error(`No calendar event found with id "${args.id}".`);
-  }
-  return { deleted: true, id: args.id };
+  const calendar = args.calendar ?? 'local';
+  const result =
+    calendar === 'google'
+      ? await deleteGoogleEvent(ctx.profileId, args.id)
+      : await deleteLocalEvent(ctx.profileId, args.id);
+  notifyCalendarWebhook({
+    action: 'deleted',
+    calendar,
+    event: { id: args.id },
+  });
+  return result;
 }
 
 defineTool({

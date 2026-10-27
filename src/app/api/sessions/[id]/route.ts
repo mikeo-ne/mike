@@ -42,9 +42,9 @@ export async function GET(
   const { db } = await getDb();
   const messages = await db
     .select()
-    .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.sessionId, session.id))
-    .orderBy(asc(schema.chatMessages.createdAt));
+    .from(schema.conversations)
+    .where(eq(schema.conversations.sessionId, session.id))
+    .orderBy(asc(schema.conversations.createdAt));
   const res = NextResponse.json({ session, messages });
   applyProfileCookie(res.headers, setCookie);
   return res;

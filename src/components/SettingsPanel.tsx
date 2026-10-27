@@ -1,7 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, Check, Globe, Loader2, Unplug } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  Globe,
+  Loader2,
+  SlidersHorizontal,
+  Unplug,
+} from 'lucide-react';
 import { api, type CalendarConnectionDto } from '@/lib/client-api';
 
 const COMMON_TIMEZONES = [
@@ -37,6 +44,13 @@ export function SettingsPanel({
   demoMode: boolean;
 }) {
   const [timezone, setTimezone] = useState('');
+  const [schedulingRules, setSchedulingRules] = useState('');
+  const [systemInstructions, setSystemInstructions] = useState('');
+  const [workdayStart, setWorkdayStart] = useState('');
+  const [workdayEnd, setWorkdayEnd] = useState('');
+  const [preferredCalendar, setPreferredCalendar] = useState<'local' | 'google'>(
+    'local',
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -67,7 +81,13 @@ export function SettingsPanel({
     (async () => {
       try {
         const s = await api.getSettings();
-        if (!cancelled) setTimezone(s.timezone ?? '');
+        if (cancelled) return;
+        setTimezone(s.timezone ?? '');
+        setSchedulingRules(s.schedulingRules ?? '');
+        setSystemInstructions(s.systemInstructions ?? '');
+        setWorkdayStart(s.workdayStart ?? '');
+        setWorkdayEnd(s.workdayEnd ?? '');
+        setPreferredCalendar(s.preferredCalendar ?? 'local');
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load settings.');
@@ -89,8 +109,18 @@ export function SettingsPanel({
     try {
       const { settings } = await api.patchSettings({
         timezone: timezone.trim() || null,
+        schedulingRules: schedulingRules.trim() || null,
+        systemInstructions: systemInstructions.trim() || null,
+        workdayStart: workdayStart.trim() || null,
+        workdayEnd: workdayEnd.trim() || null,
+        preferredCalendar,
       });
       setTimezone(settings.timezone ?? '');
+      setSchedulingRules(settings.schedulingRules ?? '');
+      setSystemInstructions(settings.systemInstructions ?? '');
+      setWorkdayStart(settings.workdayStart ?? '');
+      setWorkdayEnd(settings.workdayEnd ?? '');
+      setPreferredCalendar(settings.preferredCalendar ?? 'local');
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings.');
@@ -118,7 +148,10 @@ export function SettingsPanel({
   const useBrowserTimezone = () => {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (tz) setTimezone(tz);
+      if (tz) {
+        setTimezone(tz);
+        setSaved(false);
+      }
     } catch {
       /* ignore */
     }
@@ -141,6 +174,7 @@ export function SettingsPanel({
   })();
 
   const google = connections.find((c) => c.provider === 'google');
+  const touch = () => setSaved(false);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto">
@@ -148,7 +182,7 @@ export function SettingsPanel({
         <div className="flex items-center gap-2 px-1 pb-2">
           <Globe className="h-4 w-4 text-indigo-400" />
           <span className="text-sm font-semibold text-slate-100">
-            Your timezone
+            Timezone &amp; schedule
           </span>
         </div>
         {loading ? (
@@ -159,19 +193,29 @@ export function SettingsPanel({
         ) : (
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
             <p className="text-xs leading-relaxed text-slate-400">
-              MIKE resolves &ldquo;tomorrow at 3pm&rdquo; and daily agendas in
+              Mike resolves &ldquo;tomorrow at 3pm&rdquo; and daily agendas in
               this timezone.
             </p>
-            <input
-              value={timezone}
-              onChange={(e) => {
-                setTimezone(e.target.value);
-                setSaved(false);
-              }}
-              placeholder="e.g. Africa/Kampala"
-              list="tz-suggestions"
-              className={`${inputCls} font-mono text-xs`}
-            />
+            <div className="flex gap-2">
+              <input
+                value={timezone}
+                onChange={(e) => {
+                  setTimezone(e.target.value);
+                  touch();
+                }}
+                placeholder="e.g. Africa/Kampala"
+                list="tz-suggestions"
+                className={`${inputCls} font-mono text-xs`}
+              />
+              <button
+                type="button"
+                onClick={useBrowserTimezone}
+                className="shrink-0 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
+                title="Fill in your browser's timezone"
+              >
+                Detect
+              </button>
+            </div>
             <datalist id="tz-suggestions">
               {COMMON_TIMEZONES.map((tz) => (
                 <option key={tz} value={tz} />
@@ -180,33 +224,112 @@ export function SettingsPanel({
             {nowInTz && (
               <p className="text-xs text-indigo-300">Now: {nowInTz}</p>
             )}
-            {error && <p className="text-xs text-red-300">{error}</p>}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={saving}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : saved ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : null}
-                {saved ? 'Saved' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={useBrowserTimezone}
-                className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
-                title="Fill in your browser's timezone"
-              >
-                Detect
-              </button>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-slate-500">
+                  Workday starts
+                </span>
+                <input
+                  type="time"
+                  value={workdayStart}
+                  onChange={(e) => {
+                    setWorkdayStart(e.target.value);
+                    touch();
+                  }}
+                  className={inputCls}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-slate-500">
+                  Workday ends
+                </span>
+                <input
+                  type="time"
+                  value={workdayEnd}
+                  onChange={(e) => {
+                    setWorkdayEnd(e.target.value);
+                    touch();
+                  }}
+                  className={inputCls}
+                />
+              </label>
             </div>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-slate-500">
+                Preferred calendar
+              </span>
+              <select
+                value={preferredCalendar}
+                onChange={(e) => {
+                  setPreferredCalendar(e.target.value as 'local' | 'google');
+                  touch();
+                }}
+                className={inputCls}
+              >
+                <option value="local">Built-in calendar</option>
+                <option value="google">Google Calendar</option>
+              </select>
+            </label>
           </div>
         )}
       </div>
+
+      {!loading && (
+        <div>
+          <div className="flex items-center gap-2 px-1 pb-2">
+            <SlidersHorizontal className="h-4 w-4 text-indigo-400" />
+            <span className="text-sm font-semibold text-slate-100">
+              Rules &amp; instructions
+            </span>
+          </div>
+          <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-slate-500">
+                Scheduling rules (Mike always follows these)
+              </span>
+              <textarea
+                value={schedulingRules}
+                onChange={(e) => {
+                  setSchedulingRules(e.target.value);
+                  touch();
+                }}
+                placeholder={'e.g.\nNo meetings before 9am.\nKeep Fridays meeting-free.\nGym every weekday at 7am.'}
+                rows={4}
+                className={`${inputCls} resize-y text-xs leading-relaxed`}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-slate-500">
+                Personal system instructions
+              </span>
+              <textarea
+                value={systemInstructions}
+                onChange={(e) => {
+                  setSystemInstructions(e.target.value);
+                  touch();
+                }}
+                placeholder="e.g. Address me as Chief. Always summarize Fridays."
+                rows={3}
+                className={`${inputCls} resize-y text-xs leading-relaxed`}
+              />
+            </label>
+            {error && <p className="text-xs text-red-300">{error}</p>}
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : saved ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : null}
+              {saved ? 'Saved' : 'Save preferences'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center gap-2 px-1 pb-2">
@@ -217,7 +340,7 @@ export function SettingsPanel({
         </div>
         <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
           <p className="text-xs leading-relaxed text-slate-400">
-            Connect Google Calendar so MIKE can read and write your real
+            Connect Google Calendar so Mike can read and write your real
             schedule alongside the built-in calendar.
           </p>
           {connLoading ? (

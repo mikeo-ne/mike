@@ -8,22 +8,42 @@ import { isValidTimezone } from '@/lib/settings';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const patchSettingsSchema = z.object({
-  timezone: z.string().trim().max(64).nullable(),
+  timezone: z.string().trim().max(64).nullable().optional(),
+  schedulingRules: z.string().trim().max(5000).nullable().optional(),
+  systemInstructions: z.string().trim().max(20000).nullable().optional(),
+  workdayStart: z.string().trim().max(5).nullable().optional(),
+  workdayEnd: z.string().trim().max(5).nullable().optional(),
+  preferredCalendar: z.enum(['local', 'google']).optional(),
 });
+
+function clean(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const t = value.trim();
+  return t ? t : null;
+}
 
 export async function GET(req: Request) {
   const { profileId, setCookie } = resolveProfile(req);
   const { db } = await getDb();
   const rows = await db
     .select()
-    .from(schema.profileSettings)
-    .where(eq(schema.profileSettings.profileId, profileId))
+    .from(schema.userPreferences)
+    .where(eq(schema.userPreferences.profileId, profileId))
     .limit(1);
+  const row = rows[0];
   const res = NextResponse.json({
     settings: {
-      timezone: rows[0]?.timezone ?? null,
-      updatedAt: rows[0]?.updatedAt ?? null,
+      timezone: row?.timezone ?? null,
+      schedulingRules: row?.schedulingRules ?? null,
+      systemInstructions: row?.systemInstructions ?? null,
+      workdayStart: row?.workdayStart ?? null,
+      workdayEnd: row?.workdayEnd ?? null,
+      preferredCalendar: row?.preferredCalendar ?? 'local',
+      updatedAt: row?.updatedAt ?? null,
     },
   });
   applyProfileCookie(res.headers, setCookie);
@@ -45,7 +65,7 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
-  const timezone = parsed.data.timezone?.trim() || null;
+  const timezone = clean(parsed.data.timezone);
   if (timezone && !isValidTimezone(timezone)) {
     return NextResponse.json(
       {
@@ -54,21 +74,62 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
+  const workdayStart = clean(parsed.data.workdayStart);
+  const workdayEnd = clean(parsed.data.workdayEnd);
+  for (const [label, value] of [
+    ['workdayStart', workdayStart],
+    ['workdayEnd', workdayEnd],
+  ] as const) {
+    if (value && !HHMM.test(value)) {
+      return NextResponse.json(
+        { error: `${label} must be "HH:MM" (24-hour), e.g. "09:00".` },
+        { status: 400 },
+      );
+    }
+  }
+
   const { db } = await getDb();
+  const patch: Record<string, string | null> = {};
+  const schedulingRules = clean(parsed.data.schedulingRules);
+  const systemInstructions = clean(parsed.data.systemInstructions);
+  if (timezone !== undefined) patch.timezone = timezone;
+  if (schedulingRules !== undefined) patch.schedulingRules = schedulingRules;
+  if (systemInstructions !== undefined) patch.systemInstructions = systemInstructions;
+  if (workdayStart !== undefined) patch.workdayStart = workdayStart;
+  if (workdayEnd !== undefined) patch.workdayEnd = workdayEnd;
+  if (parsed.data.preferredCalendar !== undefined) {
+    patch.preferredCalendar = parsed.data.preferredCalendar;
+  }
+
   const existing = await db
-    .select({ profileId: schema.profileSettings.profileId })
-    .from(schema.profileSettings)
-    .where(eq(schema.profileSettings.profileId, profileId))
+    .select({ profileId: schema.userPreferences.profileId })
+    .from(schema.userPreferences)
+    .where(eq(schema.userPreferences.profileId, profileId))
     .limit(1);
   if (existing.length === 0) {
-    await db.insert(schema.profileSettings).values({ profileId, timezone });
-  } else {
+    await db.insert(schema.userPreferences).values({ profileId, ...patch });
+  } else if (Object.keys(patch).length > 0) {
     await db
-      .update(schema.profileSettings)
-      .set({ timezone, updatedAt: new Date() })
-      .where(eq(schema.profileSettings.profileId, profileId));
+      .update(schema.userPreferences)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(schema.userPreferences.profileId, profileId));
   }
-  const res = NextResponse.json({ settings: { timezone } });
+  const [row] = await db
+    .select()
+    .from(schema.userPreferences)
+    .where(eq(schema.userPreferences.profileId, profileId))
+    .limit(1);
+  const res = NextResponse.json({
+    settings: {
+      timezone: row?.timezone ?? null,
+      schedulingRules: row?.schedulingRules ?? null,
+      systemInstructions: row?.systemInstructions ?? null,
+      workdayStart: row?.workdayStart ?? null,
+      workdayEnd: row?.workdayEnd ?? null,
+      preferredCalendar: row?.preferredCalendar ?? 'local',
+      updatedAt: row?.updatedAt ?? null,
+    },
+  });
   applyProfileCookie(res.headers, setCookie);
   return res;
 }

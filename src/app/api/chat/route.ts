@@ -11,6 +11,7 @@ import {
   normalizeProvider,
 } from '@/lib/ai/config';
 import { runDemoAgent } from '@/lib/ai/demo';
+import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
 import {
   encodeStreamEvent,
   type AgentMessage,
@@ -18,7 +19,7 @@ import {
 } from '@/lib/ai/types';
 import '@/lib/tools';
 import { applyProfileCookie, resolveProfile } from '@/lib/profile';
-import { getProfileTimezone } from '@/lib/settings';
+import { getProfilePreferences } from '@/lib/settings';
 import { truncate } from '@/lib/utils';
 
 export const runtime = 'nodejs';
@@ -31,7 +32,7 @@ const chatRequestSchema = z.object({
   systemPromptId: z.string().uuid().nullable().optional(),
 });
 
-function rowToAgentMessage(row: typeof schema.chatMessages.$inferSelect): AgentMessage | null {
+function rowToAgentMessage(row: typeof schema.conversations.$inferSelect): AgentMessage | null {
   if (row.role === 'user') return { role: 'user', content: row.content };
   if (row.role === 'assistant') {
     return {
@@ -115,45 +116,77 @@ export async function POST(req: Request) {
   }
   const sessionId = session.id;
 
-  // --- Resolve the system prompt: session choice → default → none. ---
-  let system: string | null = null;
-  if (session.systemPromptId) {
+  // --- Resolve the selected additional-instructions prompt. ---
+  let extraPrompt: { name: string; content: string } | null = null;
+  const promptId = session.systemPromptId;
+  if (promptId) {
     const rows = await db
       .select()
       .from(schema.systemPrompts)
-      .where(eq(schema.systemPrompts.id, session.systemPromptId))
+      .where(eq(schema.systemPrompts.id, promptId))
       .limit(1);
-    system = rows[0]?.content ?? null;
+    if (rows[0]) extraPrompt = { name: rows[0].name, content: rows[0].content };
   }
-  if (!system) {
+  if (!extraPrompt) {
     const rows = await db
       .select()
       .from(schema.systemPrompts)
       .where(eq(schema.systemPrompts.isDefault, true))
       .orderBy(desc(schema.systemPrompts.createdAt))
       .limit(1);
-    system = rows[0]?.content ?? null;
+    if (rows[0]) extraPrompt = { name: rows[0].name, content: rows[0].content };
   }
 
-  // --- User timezone context (drives ISO accuracy for relative dates). ---
-  const userTimezone = await getProfileTimezone(profileId);
-  if (system && userTimezone) {
-    system += `\n\n[Context: the user's timezone is ${userTimezone}. Interpret relative dates ("tomorrow", "next Thursday") in this timezone and emit ISO 8601 date-times with the correct offset for it.]`;
+  // --- Compose the system prompt: hardcoded Mike core + live context. ---
+  const prefs = await getProfilePreferences(profileId);
+  const userTimezone = prefs.timezone;
+  const contextBits: string[] = [];
+  if (userTimezone) {
+    contextBits.push(
+      `User timezone: ${userTimezone}. Interpret relative dates ("tomorrow", "next Thursday") in this timezone and emit ISO 8601 date-times with the correct offset for it.`,
+    );
   }
+  if (prefs.schedulingRules) {
+    contextBits.push(`User scheduling rules:\n${prefs.schedulingRules}`);
+  }
+  if (prefs.workdayStart || prefs.workdayEnd) {
+    contextBits.push(
+      `User workday: ${prefs.workdayStart ?? '…'}–${prefs.workdayEnd ?? '…'}. Prefer proposing slots inside it.`,
+    );
+  }
+  if (prefs.preferredCalendar === 'google') {
+    contextBits.push(
+      'The user\'s preferred calendar is Google — default "calendar" parameters to "google" unless they say otherwise.',
+    );
+  }
+  if (extraPrompt) {
+    contextBits.push(
+      `Additional instructions from the user's selected prompt ("${extraPrompt.name}"):\n${extraPrompt.content}`,
+    );
+  }
+  if (prefs.systemInstructions) {
+    contextBits.push(
+      `Additional personal instructions:\n${prefs.systemInstructions}`,
+    );
+  }
+  const system =
+    contextBits.length > 0
+      ? `${MIKE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`
+      : MIKE_EXECUTIVE_PROMPT;
 
   // --- Load bounded history + persist the user message. ---
   const historyRows = await db
     .select()
-    .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.sessionId, sessionId))
-    .orderBy(asc(schema.chatMessages.createdAt))
+    .from(schema.conversations)
+    .where(eq(schema.conversations.sessionId, sessionId))
+    .orderBy(asc(schema.conversations.createdAt))
     .limit(200);
   const history: AgentMessage[] = historyRows
     .map(rowToAgentMessage)
     .filter((m): m is AgentMessage => m !== null)
     .slice(-60);
   history.push({ role: 'user', content });
-  await db.insert(schema.chatMessages).values({
+  await db.insert(schema.conversations).values({
     id: randomUUID(),
     sessionId,
     role: 'user',
@@ -178,7 +211,7 @@ export async function POST(req: Request) {
     try {
       const { db: db2 } = await getDb();
       for (const m of produced) {
-        await db2.insert(schema.chatMessages).values({
+        await db2.insert(schema.conversations).values({
           id: randomUUID(),
           sessionId,
           role: m.role,
