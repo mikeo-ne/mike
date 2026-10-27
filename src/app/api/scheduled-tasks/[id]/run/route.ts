@@ -28,11 +28,29 @@ export async function POST(
   if (!rows[0]) {
     return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
   }
-  const result = await runScheduledTask(params.id);
-  const res = NextResponse.json(
-    { run: result },
-    { status: result.status === 'ok' ? 200 : 502 },
-  );
-  applyProfileCookie(res.headers, setCookie);
-  return res;
+  // Always 200 with the run payload: the run object itself carries
+  // status/error, so the UI shows the real reason instead of a bare 502.
+  try {
+    const result = await runScheduledTask(params.id);
+    const res = NextResponse.json({ run: result });
+    applyProfileCookie(res.headers, setCookie);
+    return res;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Run failed.';
+    const res = NextResponse.json({
+      run: {
+        taskId: params.id,
+        taskName: '',
+        runId: '',
+        status: 'error',
+        briefId: null,
+        callSid: null,
+        telegramMessageId: null,
+        summary: null,
+        error: message,
+      },
+    });
+    applyProfileCookie(res.headers, setCookie);
+    return res;
+  }
 }
