@@ -110,6 +110,39 @@ CREATE TABLE IF NOT EXISTS "tool_executions" (
   "created_at" timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
+ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "agent_name" text;
+--> statement-breakpoint
+ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "disabled_tools" jsonb;
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "scheduled_tasks" (
+  "id" uuid PRIMARY KEY,
+  "profile_id" text NOT NULL,
+  "name" text NOT NULL,
+  "instructions" text NOT NULL DEFAULT '',
+  "delivery" jsonb NOT NULL DEFAULT '["hub"]',
+  "phone" text,
+  "enabled" boolean NOT NULL DEFAULT true,
+  "last_run_at" timestamptz,
+  "last_status" text,
+  "run_count" integer NOT NULL DEFAULT 0,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "scheduled_runs" (
+  "id" uuid PRIMARY KEY,
+  "task_id" uuid NOT NULL REFERENCES "scheduled_tasks"("id") ON DELETE CASCADE,
+  "profile_id" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'ok',
+  "brief_id" uuid,
+  "call_sid" text,
+  "call_status" text,
+  "output_summary" text,
+  "error" text,
+  "started_at" timestamptz NOT NULL DEFAULT now(),
+  "finished_at" timestamptz
+);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "chat_sessions_profile_idx" ON "chat_sessions" ("profile_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "conversations_session_idx" ON "conversations" ("session_id");

@@ -295,6 +295,42 @@ automatically, and revocable anytime via **Disconnect** (which also revokes the
 grant at Google). Only least-privilege scopes are requested (`openid email` +
 `calendar.events`).
 
+## Clockwork (scheduled briefings + phone calls)
+
+Mike can work while you sleep. Create scheduled tasks in the app (Dashboard →
+**Clockwork** tab) — e.g. a "Morning briefing" that pulls your agenda,
+deadlines, and conflicts, arranges meetings, and saves the result to the
+Project Hub. Delivery is Hub-only by default, or Hub + a Twilio voice call
+that phones you with a spoken 60–90 second version.
+
+- Runs every morning via Vercel Cron (`vercel.json`, `0 5 * * *` UTC ≈
+  8–9am EAT). Hobby plan fires once a day within the scheduled hour.
+- Manual **Run now** per task for immediate testing; run history per task.
+- Every `scheduled_runs` row records status, brief id, call SID/status, and
+  errors so failures are diagnosable from the UI and Vercel logs.
+- The runner skips tools disabled in the **Agent** tab and honours the
+  profile's timezone, workday, scheduling rules, and persona.
+
+Env:
+
+```bash
+CRON_SECRET=            # any long random string; Vercel Cron sends it as the bearer token
+APP_URL=                # public site URL (needed so Twilio can fetch call scripts)
+TWILIO_ACCOUNT_SID=     # from twilio.com/console (trial works: 30 days, 75 voice mins)
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=     # your Twilio (trial) number, E.164
+ALERT_PHONE_NUMBER=     # your verified phone number, E.164 (+256…)
+```
+
+Trial notes: verify your own number first (trial accounts can only call
+verified numbers in the sign-up country, max 5), and expect the short trial
+disclaimer before the briefing. Twilio signs every callback — the
+`/api/calls/*` endpoints reject unsigned requests with 403.
+
+Customize the agent itself in the Dashboard → **Agent** tab: display name
+(Mike answers to it), persona/instructions, and per-tool ability toggles that
+apply to both chat and scheduled runs.
+
 ## Scripts
 
 | Command | Description |

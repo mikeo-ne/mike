@@ -40,8 +40,8 @@ function snippet(text: string, max = 280): string {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean;
 }
 
-async function saveBrief(
-  ctx: ToolContext,
+export async function saveWorkspaceBrief(
+  profileId: string,
   title: string,
   content: string,
 ): Promise<string> {
@@ -49,12 +49,20 @@ async function saveBrief(
   const id = randomUUID();
   await db.insert(schema.workspaceContext).values({
     id,
-    profileId: ctx.profileId,
+    profileId,
     title,
     kind: 'brief',
     content,
   });
   return id;
+}
+
+async function saveBrief(
+  ctx: ToolContext,
+  title: string,
+  content: string,
+): Promise<string> {
+  return saveWorkspaceBrief(ctx.profileId, title, content);
 }
 
 async function findWorkspaceNotes(ctx: ToolContext, query: string, limit: number) {

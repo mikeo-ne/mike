@@ -17,6 +17,8 @@ const patchSettingsSchema = z.object({
   workdayStart: z.string().trim().max(5).nullable().optional(),
   workdayEnd: z.string().trim().max(5).nullable().optional(),
   preferredCalendar: z.enum(['local', 'google']).optional(),
+  agentName: z.string().trim().max(40).nullable().optional(),
+  disabledTools: z.array(z.string().trim().min(1).max(64)).max(60).optional(),
 });
 
 function clean(value: string | null | undefined): string | null | undefined {
@@ -24,6 +26,22 @@ function clean(value: string | null | undefined): string | null | undefined {
   if (value === null) return null;
   const t = value.trim();
   return t ? t : null;
+}
+
+function settingsDto(row: typeof schema.userPreferences.$inferSelect | undefined) {
+  return {
+    timezone: row?.timezone ?? null,
+    schedulingRules: row?.schedulingRules ?? null,
+    systemInstructions: row?.systemInstructions ?? null,
+    workdayStart: row?.workdayStart ?? null,
+    workdayEnd: row?.workdayEnd ?? null,
+    preferredCalendar: row?.preferredCalendar ?? 'local',
+    agentName: row?.agentName ?? null,
+    disabledTools: Array.isArray(row?.disabledTools)
+      ? (row?.disabledTools as string[]).filter((t) => typeof t === 'string')
+      : [],
+    updatedAt: row?.updatedAt ?? null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -34,18 +52,7 @@ export async function GET(req: Request) {
     .from(schema.userPreferences)
     .where(eq(schema.userPreferences.profileId, profileId))
     .limit(1);
-  const row = rows[0];
-  const res = NextResponse.json({
-    settings: {
-      timezone: row?.timezone ?? null,
-      schedulingRules: row?.schedulingRules ?? null,
-      systemInstructions: row?.systemInstructions ?? null,
-      workdayStart: row?.workdayStart ?? null,
-      workdayEnd: row?.workdayEnd ?? null,
-      preferredCalendar: row?.preferredCalendar ?? 'local',
-      updatedAt: row?.updatedAt ?? null,
-    },
-  });
+  const res = NextResponse.json({ settings: settingsDto(rows[0]) });
   applyProfileCookie(res.headers, setCookie);
   return res;
 }
@@ -89,9 +96,10 @@ export async function PATCH(req: Request) {
   }
 
   const { db } = await getDb();
-  const patch: Record<string, string | null> = {};
+  const patch: Record<string, string | string[] | null> = {};
   const schedulingRules = clean(parsed.data.schedulingRules);
   const systemInstructions = clean(parsed.data.systemInstructions);
+  const agentName = clean(parsed.data.agentName);
   if (timezone !== undefined) patch.timezone = timezone;
   if (schedulingRules !== undefined) patch.schedulingRules = schedulingRules;
   if (systemInstructions !== undefined) patch.systemInstructions = systemInstructions;
@@ -99,6 +107,10 @@ export async function PATCH(req: Request) {
   if (workdayEnd !== undefined) patch.workdayEnd = workdayEnd;
   if (parsed.data.preferredCalendar !== undefined) {
     patch.preferredCalendar = parsed.data.preferredCalendar;
+  }
+  if (agentName !== undefined) patch.agentName = agentName;
+  if (parsed.data.disabledTools !== undefined) {
+    patch.disabledTools = [...new Set(parsed.data.disabledTools)].slice(0, 60);
   }
 
   const existing = await db
@@ -119,17 +131,7 @@ export async function PATCH(req: Request) {
     .from(schema.userPreferences)
     .where(eq(schema.userPreferences.profileId, profileId))
     .limit(1);
-  const res = NextResponse.json({
-    settings: {
-      timezone: row?.timezone ?? null,
-      schedulingRules: row?.schedulingRules ?? null,
-      systemInstructions: row?.systemInstructions ?? null,
-      workdayStart: row?.workdayStart ?? null,
-      workdayEnd: row?.workdayEnd ?? null,
-      preferredCalendar: row?.preferredCalendar ?? 'local',
-      updatedAt: row?.updatedAt ?? null,
-    },
-  });
+  const res = NextResponse.json({ settings: settingsDto(row) });
   applyProfileCookie(res.headers, setCookie);
   return res;
 }

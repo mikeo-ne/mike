@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import {
+  Bot,
   CalendarDays,
+  Clock,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -12,18 +14,30 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SystemPromptDto } from '@/lib/client-api';
+import AgentPanel from './AgentPanel';
 import { CalendarPanel } from './CalendarPanel';
+import ClockworkPanel from './ClockworkPanel';
 import { DashboardPanel } from './DashboardPanel';
 import { ProjectHub } from './ProjectHub';
 import { PromptsPanel } from './PromptsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { WorkspacePanel } from './WorkspacePanel';
 
-type Tab = 'dashboard' | 'hub' | 'calendar' | 'workspace' | 'prompts' | 'settings';
+type Tab =
+  | 'dashboard'
+  | 'hub'
+  | 'clockwork'
+  | 'agent'
+  | 'calendar'
+  | 'workspace'
+  | 'prompts'
+  | 'settings';
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof CalendarDays }> = [
   { id: 'dashboard', label: 'Today', icon: LayoutDashboard },
   { id: 'hub', label: 'Hub', icon: FolderKanban },
+  { id: 'clockwork', label: 'Clockwork', icon: Clock },
+  { id: 'agent', label: 'Agent', icon: Bot },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'workspace', label: 'Workspace', icon: FileText },
   { id: 'prompts', label: 'Prompts', icon: SlidersHorizontal },
@@ -94,7 +108,7 @@ export function RightPanel(props: RightPanelProps) {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {tab === 'dashboard' && (
           <DashboardPanel
             refreshKey={calendarRefreshKey}
@@ -102,6 +116,8 @@ export function RightPanel(props: RightPanelProps) {
           />
         )}
         {tab === 'hub' && <ProjectHub refreshKey={calendarRefreshKey} />}
+        {tab === 'clockwork' && <ClockworkPanel />}
+        {tab === 'agent' && <AgentPanel />}
         {tab === 'calendar' && <CalendarPanel refreshKey={calendarRefreshKey} />}
         {tab === 'workspace' && (
           <WorkspacePanel refreshKey={calendarRefreshKey} />
