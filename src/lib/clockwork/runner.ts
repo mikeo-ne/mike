@@ -104,13 +104,6 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
 
   const runId = randomUUID();
   const startedAt = new Date();
-  await db.insert(schema.scheduledRuns).values({
-    id: runId,
-    taskId: task.id,
-    profileId: task.profileId,
-    status: 'ok',
-    startedAt,
-  });
 
   const fail = async (message: string): Promise<TaskRunResult> => {
     await db
@@ -140,6 +133,16 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
   };
 
   try {
+    // Inside try: even a run-record insert failure surfaces as a visible
+    // run error (with runCount bumped) instead of a bare 502.
+    await db.insert(schema.scheduledRuns).values({
+      id: runId,
+      taskId: task.id,
+      profileId: task.profileId,
+      status: 'ok',
+      startedAt,
+    });
+
     const prefs = await getProfilePreferences(task.profileId);
     const agentName = prefs.agentName || 'Mike';
     const provider = defaultProvider();
