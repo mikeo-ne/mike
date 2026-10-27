@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+build/
+
+# local database (PGlite fallback) + misc local data
+data/
+
+# env
+.env
+.env*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# os / editor
+.DS_Store
+*.swp
+.vscode/*
+!.vscode/extensions.json
+.idea/
