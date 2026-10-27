@@ -18,6 +18,7 @@ import {
 } from '@/lib/ai/types';
 import '@/lib/tools';
 import { applyProfileCookie, resolveProfile } from '@/lib/profile';
+import { getProfileTimezone } from '@/lib/settings';
 import { truncate } from '@/lib/utils';
 
 export const runtime = 'nodejs';
@@ -134,6 +135,12 @@ export async function POST(req: Request) {
     system = rows[0]?.content ?? null;
   }
 
+  // --- User timezone context (drives ISO accuracy for relative dates). ---
+  const userTimezone = await getProfileTimezone(profileId);
+  if (system && userTimezone) {
+    system += `\n\n[Context: the user's timezone is ${userTimezone}. Interpret relative dates ("tomorrow", "next Thursday") in this timezone and emit ISO 8601 date-times with the correct offset for it.]`;
+  }
+
   // --- Load bounded history + persist the user message. ---
   const historyRows = await db
     .select()
@@ -214,7 +221,7 @@ export async function POST(req: Request) {
           });
           const out = await runDemoAgent(
             content,
-            { profileId, sessionId },
+            { profileId, sessionId, timezone: userTimezone },
             emit,
             signal,
           );
@@ -227,7 +234,7 @@ export async function POST(req: Request) {
               apiKey: apiKey as string,
               system,
               history,
-              toolContext: { profileId, sessionId },
+              toolContext: { profileId, sessionId, timezone: userTimezone },
               maxSteps: steps,
               signal,
             },

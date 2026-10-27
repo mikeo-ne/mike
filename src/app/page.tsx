@@ -253,6 +253,9 @@ export default function Home() {
           calendarRefreshKey={calendarRefreshKey}
           prompts={prompts}
           activePromptId={effectivePromptId}
+          provider={health.provider}
+          model={health.model}
+          demoMode={health.demoMode}
           onSelectPrompt={(id) => void handlePromptChange(id)}
           onPromptsChanged={() => void refreshPrompts()}
           onClose={() => setPanelOpen(false)}

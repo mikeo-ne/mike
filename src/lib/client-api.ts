@@ -55,6 +55,11 @@ export interface HealthDto {
   time: string;
 }
 
+export interface SettingsDto {
+  timezone: string | null;
+  updatedAt?: string | null;
+}
+
 async function parse<T>(res: Response): Promise<T> {
   const data = (await res.json().catch(() => ({}))) as {
     error?: string;
@@ -145,4 +150,15 @@ export const api = {
     fetch(`/api/calendar/events/${id}`, { method: 'DELETE' }).then(
       parse<{ deleted: boolean }>,
     ),
+
+  getSettings: () =>
+    fetch('/api/settings')
+      .then(parse<{ settings: SettingsDto }>)
+      .then((r) => r.settings),
+  patchSettings: (patch: { timezone: string | null }) =>
+    fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(parse<{ settings: SettingsDto }>),
 };

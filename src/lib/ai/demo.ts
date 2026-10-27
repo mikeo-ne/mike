@@ -204,7 +204,7 @@ export async function runDemoAgent(
     reply = `It's **${(res as { local?: string }).local ?? 'unknown'}** (${(res as { timezone?: string }).timezone ?? ''}). (Demo mode: add an API key for full AI.)`;
   } else if (/(help|what can you|who are you|hi|hello|hey)\b/.test(lower)) {
     reply =
-      "Hi! I'm your personal assistant (running in **demo mode** — no API key configured). I can still:\n\n• Show your calendar (\"what's on this week?\")\n• Create events (\"schedule gym tomorrow at 7am\")\n• Delete events (\"delete gym\")\n• Tell the time\n\nAdd `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` to `.env` for full AI with real function calling.";
+      "Hi! I'm **MIKE**, your hyper-organized executive assistant (running in **demo mode** — no API key configured). I can still:\n\n• Show your calendar (\"what's on this week?\")\n• Create events (\"schedule gym tomorrow at 7am\")\n• Delete events (\"delete gym\")\n• Tell the time\n\nAdd `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` to your secrets for full AI with real function calling.";
   } else {
     reply = `Demo mode only handles simple calendar requests, so I can't fully answer that yet.\n\nYou said: "${input.length > 200 ? `${input.slice(0, 200)}…` : input}"\n\nTry "what's on my calendar?" or "schedule lunch tomorrow at 12:30" — or add an API key to \`.env\` for full AI.`;
   }

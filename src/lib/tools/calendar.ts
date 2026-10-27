@@ -3,7 +3,7 @@
  * Postgres. Every operation is scoped to `ctx.profileId`.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, ilike, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, ilike, isNull, lt, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb, schema } from '@/db';
 import { defineTool, type ToolContext } from './registry';
@@ -27,6 +27,41 @@ function toDto(e: typeof schema.calendarEvents.$inferSelect) {
     ends_at: e.endsAt ? e.endsAt.toISOString() : null,
     all_day: e.allDay,
   };
+}
+
+/**
+ * Finds events overlapping [startsAt, endsAt). Events with no end are treated
+ * as 1 hour long for overlap purposes.
+ */
+async function findConflicts(
+  profileId: string,
+  startsAt: Date,
+  endsAt: Date,
+  excludeId?: string,
+) {
+  const { db } = await getDb();
+  const candidates = await db
+    .select()
+    .from(schema.calendarEvents)
+    .where(
+      and(
+        eq(schema.calendarEvents.profileId, profileId),
+        lt(schema.calendarEvents.startsAt, endsAt),
+        or(
+          gt(schema.calendarEvents.endsAt, startsAt),
+          isNull(schema.calendarEvents.endsAt),
+        ),
+      ),
+    )
+    .orderBy(asc(schema.calendarEvents.startsAt))
+    .limit(25);
+  return candidates
+    .filter((e) => e.id !== excludeId)
+    .filter((e) => {
+      const existingEnd = e.endsAt ?? new Date(e.startsAt.getTime() + 3600_000);
+      return e.startsAt < endsAt && existingEnd > startsAt;
+    })
+    .map(toDto);
 }
 
 // ---------------------------------------------------------------- list ---
@@ -129,13 +164,18 @@ async function createCalendarEvent(
       allDay: args.all_day ?? false,
     })
     .returning();
-  return { event: toDto(row) };
+  const conflicts = await findConflicts(ctx.profileId, startsAt, endsAt, row.id);
+  return {
+    event: toDto(row),
+    conflicts,
+    conflicts_count: conflicts.length,
+  };
 }
 
 defineTool({
   name: 'create_calendar_event',
   description:
-    'Create a calendar event. Resolve relative dates ("tomorrow at 3pm") to an exact ISO date-time first — call get_current_time when unsure what today is.',
+    'Create a calendar event. Resolve relative dates ("tomorrow at 3pm") to an exact ISO date-time first — call get_current_time when unsure what today is. The result includes "conflicts" (existing events overlapping the new one) — always check them and warn the user when non-empty.',
   parameters: createCalendarEventSchema,
   execute: createCalendarEvent,
 });
@@ -196,13 +236,23 @@ async function updateCalendarEvent(
       ),
     )
     .returning();
-  return { event: toDto(row) };
+  const effectiveEnd =
+    row.endsAt ?? new Date(row.startsAt.getTime() + 3600_000);
+  const conflicts =
+    args.starts_at || args.ends_at
+      ? await findConflicts(ctx.profileId, row.startsAt, effectiveEnd, row.id)
+      : [];
+  return {
+    event: toDto(row),
+    conflicts,
+    conflicts_count: conflicts.length,
+  };
 }
 
 defineTool({
   name: 'update_calendar_event',
   description:
-    'Update an existing calendar event. Only the provided fields change; call list_calendar_events first to get the event id.',
+    'Update an existing calendar event. Only the provided fields change; call list_calendar_events first to get the event id. When times change, the result includes "conflicts" (overlapping events) — always surface them to the user.',
   parameters: updateCalendarEventSchema,
   execute: updateCalendarEvent,
 });

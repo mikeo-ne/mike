@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS "calendar_events" (
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "profile_settings" (
+  "profile_id" text PRIMARY KEY,
+  "timezone" text,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "tool_executions" (
   "id" uuid PRIMARY KEY,
   "session_id" uuid REFERENCES "chat_sessions"("id") ON DELETE SET NULL,

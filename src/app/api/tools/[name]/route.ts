@@ -5,6 +5,7 @@ import { getDb, schema } from '@/db';
 import '@/lib/tools';
 import { executeTool, getTool } from '@/lib/tools';
 import { applyProfileCookie, resolveProfile } from '@/lib/profile';
+import { getProfileTimezone } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,9 +65,11 @@ export async function POST(
     }
   }
   try {
+    const timezone = await getProfileTimezone(profileId);
     const result = await executeTool(params.name, parsed.data.args ?? {}, {
       profileId,
       sessionId: parsed.data.sessionId,
+      timezone,
     });
     const res = NextResponse.json({ tool: params.name, result });
     applyProfileCookie(res.headers, setCookie);

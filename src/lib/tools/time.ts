@@ -16,19 +16,18 @@ defineTool({
   description:
     'Get the current date and time. Use this before interpreting relative dates like "today", "tomorrow", or "next Friday".',
   parameters: getCurrentTimeSchema,
-  execute: async (args) => {
+  execute: async (args, ctx) => {
     const now = new Date();
-    let timezone = args.timezone?.trim() || undefined;
-    if (timezone) {
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: timezone });
-      } catch {
-        throw new Error(
-          `Unknown timezone "${timezone}". Use an IANA name like "Africa/Kampala".`,
-        );
-      }
-    } else {
-      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let timezone =
+      args.timezone?.trim() ||
+      ctx.timezone ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    } catch {
+      throw new Error(
+        `Unknown timezone "${timezone}". Use an IANA name like "Africa/Kampala".`,
+      );
     }
     const local = new Intl.DateTimeFormat('en-GB', {
       timeZone: timezone,

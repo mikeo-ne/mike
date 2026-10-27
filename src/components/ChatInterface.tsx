@@ -119,7 +119,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-slate-100">
-              Personal Assistant
+              MIKE
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <span className="hidden truncate font-mono sm:inline">
@@ -166,11 +166,12 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 <Sparkles className="h-7 w-7 text-white" />
               </div>
               <h2 className="mt-4 text-xl font-semibold text-slate-100">
-                How can I help?
+                Hi, I&apos;m MIKE
               </h2>
               <p className="mt-1 max-w-md text-sm text-slate-400">
-                Chat with your AI assistant. It can manage your calendar,
-                answer questions, and take actions with tools.
+                Your hyper-organized executive assistant. I manage your
+                calendar with extreme care — always checking for conflicts
+                before booking.
               </p>
               <div className="mt-6 grid w-full max-w-lg gap-2">
                 {SUGGESTIONS.map((s) => (

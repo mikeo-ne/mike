@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { drizzle as drizzlePg, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import postgres from 'postgres';
@@ -36,8 +36,13 @@ declare global {
 }
 
 function databaseUrl(): string | null {
-  const url = process.env.DATABASE_URL?.trim();
-  return url ? url : null;
+  // Accept the common Postgres env var names (managed platforms such as
+  // Arena/Vercel may inject POSTGRES_URL instead of DATABASE_URL).
+  for (const key of ['DATABASE_URL', 'POSTGRES_URL']) {
+    const url = process.env[key]?.trim();
+    if (url) return url;
+  }
+  return null;
 }
 
 export function getDatabaseMode(): DatabaseMode {
@@ -119,6 +124,14 @@ async function ensureSchema(db: Database): Promise<void> {
     );
   `);
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "profile_settings" (
+      "profile_id" text PRIMARY KEY,
+      "timezone" text,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "tool_executions" (
       "id" uuid PRIMARY KEY,
       "session_id" uuid REFERENCES "chat_sessions"("id") ON DELETE SET NULL,
@@ -151,21 +164,50 @@ async function ensureSchema(db: Database): Promise<void> {
 }
 
 async function seedGlobalPrompts(db: Database): Promise<void> {
-  const existing = await db.execute(
-    sql`SELECT COUNT(*)::int AS count FROM "system_prompts" WHERE "profile_id" IS NULL`,
-  );
-  const count = Number(
-    (existing as unknown as Array<{ count: number }>)[0]?.count ?? 0,
-  );
-  if (count > 0) return;
+  // Top up by name so new seeds (e.g. the MIKE persona) appear on existing
+  // databases too — never touching user-created prompts. Uses only the
+  // portable query builder: raw execute() result shapes differ per driver.
+  const globals = await db
+    .select({
+      id: schema.systemPrompts.id,
+      name: schema.systemPrompts.name,
+    })
+    .from(schema.systemPrompts)
+    .where(isNull(schema.systemPrompts.profileId));
+  const known = new Set(globals.map((g) => g.name));
   for (const prompt of SEED_PROMPTS) {
+    if (known.has(prompt.name)) continue;
     await db.insert(schema.systemPrompts).values({
       id: randomUUID(),
       profileId: null,
       name: prompt.name,
       content: prompt.content,
-      isDefault: prompt.isDefault,
+      isDefault: false,
     });
+    known.add(prompt.name);
+  }
+  // Guarantee a default exists, preferring the flagged seed.
+  const all = await db
+    .select({
+      id: schema.systemPrompts.id,
+      name: schema.systemPrompts.name,
+      isDefault: schema.systemPrompts.isDefault,
+    })
+    .from(schema.systemPrompts);
+  if (!all.some((r) => r.isDefault)) {
+    const preferred =
+      SEED_PROMPTS.find((p) => p.isDefault)?.name ?? SEED_PROMPTS[0].name;
+    await db
+      .update(schema.systemPrompts)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(isNull(schema.systemPrompts.profileId));
+    const target = all.find((r) => r.name === preferred);
+    if (target) {
+      await db
+        .update(schema.systemPrompts)
+        .set({ isDefault: true, updatedAt: new Date() })
+        .where(eq(schema.systemPrompts.id, target.id));
+    }
   }
 }
 

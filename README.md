@@ -1,8 +1,10 @@
-# Personal AI Assistant
+# MIKE — Personal AI Assistant
 
-A fullstack personal AI assistant: a responsive chat UI backed by Next.js + Node.js, an
-AI agent (OpenAI or Anthropic) with **function calling / tool use**, and a Postgres
-database storing conversations, system prompts, calendar events, and a tool-audit log.
+MIKE is your hyper-organized executive personal assistant: a responsive chat UI backed
+by Next.js + Node.js, an AI agent (OpenAI or Anthropic) with **function calling /
+tool use**, and a Postgres database storing conversations, system prompts, calendar
+events, and a tool-audit log. MIKE manages your calendar with extreme care — always
+checking for conflicts before booking.
 
 ## Features
 
@@ -10,16 +12,20 @@ database storing conversations, system prompts, calendar events, and a tool-audi
   cards, conversation sidebar, mobile drawers, dark UI.
 - **AI agent with tools** — OpenAI function calling *or* Anthropic tool use behind one
   provider-agnostic agentic loop (multi-step: model → tools → model).
-- **Calendar actions** — the agent can list, create, update, and delete calendar events;
-  a side panel shows the same data with a manual create form.
-- **System prompts** — seeded defaults plus full CRUD; pick one per conversation.
+- **Calendar actions** — the agent can list, create, update, and delete calendar
+  events, and build a **daily agenda**; booking tools report **conflicts** so MIKE
+  warns before double-booking. A side panel shows the same data with a manual form.
+- **System prompts** — MIKE's executive persona ships as the default, plus full CRUD;
+  pick one per conversation.
+- **Timezone-aware scheduling** — set your IANA timezone in Settings; MIKE resolves
+  relative dates in it and emits accurate ISO 8601 date-times.
 - **Secure Postgres schema** — parameterized queries only (Drizzle ORM), per-browser
   profile isolation via an `httpOnly` cookie, input validation with zod on every route.
 - **Tool framework + REST gateway** — every tool is auto-exposed to the agent, to
   `GET /api/tools` (catalogue), and to `POST /api/tools/<name>` (audited execution).
-- **Zero-config fallback DB** — without `DATABASE_URL` the app uses embedded PGlite
-  (a real Postgres engine, file-backed) so it runs anywhere; point it at real Postgres
-  in production with no code changes.
+- **Zero-config fallback DB** — without `DATABASE_URL`/`POSTGRES_URL` the app uses
+  embedded PGlite (a real Postgres engine, file-backed) so it runs anywhere; point it
+  at real Postgres in production with no code changes.
 - **Demo mode** — with no API key configured, the app still runs end-to-end with
   rule-based replies and *real* tool execution.
 
@@ -33,13 +39,14 @@ npm run dev            # http://localhost:3000
 
 Open the app and try:
 
-- `What's on my calendar this week?`
-- `Schedule lunch with Sara tomorrow at 12:30`
+- `What does my schedule look like tomorrow morning?`
+- `Book a lunch meeting with Sarah at 1 PM next Thursday.`
 - `What can you do?`
 
 ### Enable full AI
 
-Set in `.env`:
+Paste keys into your host's **Secrets Management** panel (e.g. Arena secrets), or set
+them in `.env` for local development:
 
 ```env
 AI_PROVIDER=openai            # or: anthropic
@@ -83,7 +90,7 @@ Agent loop (src/lib/ai) ──► OpenAI Chat Completions  (function calling)
   multi-step, max AGENT_MAX_STEPS ──► Anthropic Messages (tool use)
   ▼ executes via registry
 Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
-  get_current_time, list/create/update/delete_calendar_event
+  get_current_time, get_daily_agenda, list/create/update/delete_calendar_event
 ```
 
 ### Request flow for one chat turn
@@ -103,6 +110,7 @@ Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
 | `chat_sessions` | Conversations: owner `profile_id`, title, prompt ref, provider/model |
 | `chat_messages` | Transcript rows: `user` / `assistant` (+`tool_calls` JSON) / `tool` results |
 | `system_prompts` | Global seeds (`profile_id IS NULL`) + user prompts, one `is_default` |
+| `profile_settings` | Per-profile preferences (timezone) injected into agent context |
 | `calendar_events` | Profile-scoped events managed by agent tools and the UI |
 | `tool_executions` | Audit log: tool, args, result/error, duration, session |
 
@@ -145,6 +153,7 @@ executable via `POST /api/tools/my_tool` (validated + audited).
 | `PATCH/DELETE /api/system-prompts/:id` | Update / delete prompt |
 | `GET/POST /api/calendar/events` | List (`?from&to&query&limit`) / create event |
 | `PATCH/DELETE /api/calendar/events/:id` | Update / delete event |
+| `GET/PATCH /api/settings` | Read / update profile settings (`{ timezone }`) |
 | `GET /api/tools` | Tool catalogue with JSON schemas |
 | `POST /api/tools/:name` | `{ args, sessionId? }` → `{ result }` |
 

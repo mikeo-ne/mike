@@ -1,8 +1,8 @@
 {
-  "name": "personal-ai-assistant",
+  "name": "mike",
   "version": "0.1.0",
   "private": true,
-  "description": "Fullstack personal AI assistant with chat, function calling / tool use, calendar, and Postgres storage.",
+  "description": "MIKE — fullstack personal AI assistant with chat, function calling / tool use, calendar, and Postgres storage.",
   "engines": {
     "node": ">=18.18.0"
   },

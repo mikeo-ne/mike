@@ -22,6 +22,8 @@ export interface ToolContext {
   profileId: string;
   /** Active chat session, when invoked from a conversation. */
   sessionId?: string;
+  /** User's saved IANA timezone, when set (see profile_settings). */
+  timezone?: string | null;
 }
 
 export interface ToolDefinition<

@@ -5,6 +5,8 @@ node_modules/
 .next/
 out/
 build/
+tsconfig.tsbuildinfo
+next-env.d.ts
 
 # local database (PGlite fallback) + misc local data
 data/

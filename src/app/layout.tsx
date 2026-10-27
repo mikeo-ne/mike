@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Personal AI Assistant',
+  title: 'MIKE — Personal AI Assistant',
   description:
-    'Fullstack personal AI assistant with chat, function calling, calendar tools, and Postgres storage.',
+    'MIKE is your hyper-organized executive personal AI assistant: chat, function calling, calendar tools, and Postgres storage.',
 };
 
 export default function RootLayout({

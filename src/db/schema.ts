@@ -122,6 +122,28 @@ export type SystemPrompt = typeof systemPrompts.$inferSelect;
 export type NewSystemPrompt = typeof systemPrompts.$inferInsert;
 
 // ---------------------------------------------------------------------------
+// Profile settings
+// ---------------------------------------------------------------------------
+/**
+ * Per-profile preferences. `timezone` (IANA, e.g. "Africa/Kampala") is
+ * injected into the agent's system context so relative dates resolve in the
+ * user's own timezone, and is the default for time tools.
+ */
+export const profileSettings = pgTable('profile_settings', {
+  profileId: text('profile_id').primaryKey(),
+  timezone: text('timezone'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type ProfileSettings = typeof profileSettings.$inferSelect;
+export type NewProfileSettings = typeof profileSettings.$inferInsert;
+
+// ---------------------------------------------------------------------------
 // Calendar events
 // ---------------------------------------------------------------------------
 export const calendarEvents = pgTable(

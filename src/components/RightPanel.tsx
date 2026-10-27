@@ -1,18 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarDays, SlidersHorizontal, X } from 'lucide-react';
+import { CalendarDays, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SystemPromptDto } from '@/lib/client-api';
 import { CalendarPanel } from './CalendarPanel';
 import { PromptsPanel } from './PromptsPanel';
+import { SettingsPanel } from './SettingsPanel';
 
-type Tab = 'calendar' | 'prompts';
+type Tab = 'calendar' | 'prompts' | 'settings';
 
 interface RightPanelProps {
   calendarRefreshKey: number;
   prompts: SystemPromptDto[];
   activePromptId: string | null;
+  provider: string;
+  model: string;
+  demoMode: boolean;
   onSelectPrompt: (promptId: string) => void;
   onPromptsChanged: () => void;
   onClose: () => void;
@@ -23,6 +27,9 @@ export function RightPanel(props: RightPanelProps) {
     calendarRefreshKey,
     prompts,
     activePromptId,
+    provider,
+    model,
+    demoMode,
     onSelectPrompt,
     onPromptsChanged,
     onClose,
@@ -60,6 +67,19 @@ export function RightPanel(props: RightPanelProps) {
         </button>
         <button
           type="button"
+          onClick={() => setTab('settings')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium',
+            tab === 'settings'
+              ? 'bg-slate-800 text-slate-100'
+              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200',
+          )}
+        >
+          <Settings className="h-3.5 w-3.5" />
+          Settings
+        </button>
+        <button
+          type="button"
           onClick={onClose}
           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100 xl:hidden"
           aria-label="Close panel"
@@ -70,12 +90,18 @@ export function RightPanel(props: RightPanelProps) {
       <div className="min-h-0 flex-1 p-3">
         {tab === 'calendar' ? (
           <CalendarPanel refreshKey={calendarRefreshKey} />
-        ) : (
+        ) : tab === 'prompts' ? (
           <PromptsPanel
             prompts={prompts}
             activeId={activePromptId}
             onSelect={onSelectPrompt}
             onChanged={onPromptsChanged}
+          />
+        ) : (
+          <SettingsPanel
+            provider={provider}
+            model={model}
+            demoMode={demoMode}
           />
         )}
       </div>
