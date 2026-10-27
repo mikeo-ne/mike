@@ -9,9 +9,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const deliverySchema = z
-  .array(z.enum(['hub', 'call']))
+  .array(z.enum(['hub', 'call', 'telegram']))
   .min(1)
-  .max(2)
+  .max(3)
   .refine((d) => d.includes('hub'), {
     message: 'Delivery must include "hub".',
   });
@@ -27,6 +27,13 @@ const createTaskSchema = z.object({
     .regex(/^\+?[0-9 ()-]*$/, 'Phone must look like +256700000000.')
     .nullable()
     .optional(),
+  telegramChatId: z
+    .string()
+    .trim()
+    .max(32)
+    .regex(/^-?\d+$/, 'Telegram chat id must be numeric.')
+    .nullable()
+    .optional(),
   enabled: z.boolean().optional().default(true),
 });
 
@@ -37,6 +44,7 @@ function dto(row: typeof schema.scheduledTasks.$inferSelect) {
     instructions: row.instructions,
     delivery: Array.isArray(row.delivery) ? row.delivery : ['hub'],
     phone: row.phone,
+    telegramChatId: row.telegramChatId,
     enabled: row.enabled,
     lastRunAt: row.lastRunAt,
     lastStatus: row.lastStatus,
@@ -83,6 +91,7 @@ export async function POST(req: Request) {
     instructions: parsed.data.instructions,
     delivery: [...new Set(parsed.data.delivery)],
     phone: parsed.data.phone?.trim() || null,
+    telegramChatId: parsed.data.telegramChatId?.trim() || null,
     enabled: parsed.data.enabled,
   });
   const [row] = await db

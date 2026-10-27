@@ -143,6 +143,12 @@ CREATE TABLE IF NOT EXISTS "scheduled_runs" (
   "finished_at" timestamptz
 );
 --> statement-breakpoint
+ALTER TABLE "scheduled_tasks" ADD COLUMN IF NOT EXISTS "telegram_chat_id" text;
+--> statement-breakpoint
+ALTER TABLE "scheduled_runs" ADD COLUMN IF NOT EXISTS "telegram_message_id" text;
+--> statement-breakpoint
+ALTER TABLE "scheduled_runs" ADD COLUMN IF NOT EXISTS "telegram_status" text;
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "chat_sessions_profile_idx" ON "chat_sessions" ("profile_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "conversations_session_idx" ON "conversations" ("session_id");

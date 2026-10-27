@@ -146,6 +146,15 @@ async function ensureSchema(db: Database): Promise<void> {
     );
   `);
   await db.execute(sql`
+    ALTER TABLE IF EXISTS "scheduled_tasks" ADD COLUMN IF NOT EXISTS "telegram_chat_id" text;
+  `);
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS "scheduled_runs" ADD COLUMN IF NOT EXISTS "telegram_message_id" text;
+  `);
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS "scheduled_runs" ADD COLUMN IF NOT EXISTS "telegram_status" text;
+  `);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "scheduled_tasks" (
       "id" uuid PRIMARY KEY,
       "profile_id" text NOT NULL,
@@ -153,6 +162,7 @@ async function ensureSchema(db: Database): Promise<void> {
       "instructions" text NOT NULL DEFAULT '',
       "delivery" jsonb NOT NULL DEFAULT '["hub"]',
       "phone" text,
+      "telegram_chat_id" text,
       "enabled" boolean NOT NULL DEFAULT true,
       "last_run_at" timestamptz,
       "last_status" text,
@@ -170,6 +180,8 @@ async function ensureSchema(db: Database): Promise<void> {
       "brief_id" uuid,
       "call_sid" text,
       "call_status" text,
+      "telegram_message_id" text,
+      "telegram_status" text,
       "output_summary" text,
       "error" text,
       "started_at" timestamptz NOT NULL DEFAULT now(),

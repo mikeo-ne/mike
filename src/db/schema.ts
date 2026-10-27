@@ -327,6 +327,8 @@ export const scheduledTasks = pgTable(
     delivery: jsonb('delivery').$type<string[]>().notNull(),
     /** E.164 recipient override; null = ALERT_PHONE_NUMBER. */
     phone: text('phone'),
+    /** Telegram chat id override for voice-brief delivery; null = TELEGRAM_CHAT_ID. */
+    telegramChatId: text('telegram_chat_id'),
     enabled: boolean('enabled').notNull().default(true),
     lastRunAt: timestamp('last_run_at', { withTimezone: true }),
     lastStatus: text('last_status'),
@@ -357,6 +359,8 @@ export const scheduledRuns = pgTable(
     briefId: uuid('brief_id'),
     callSid: text('call_sid'),
     callStatus: text('call_status'),
+    telegramMessageId: text('telegram_message_id'),
+    telegramStatus: text('telegram_status'),
     outputSummary: text('output_summary'),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true })

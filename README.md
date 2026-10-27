@@ -326,6 +326,23 @@ Trial notes: verify your own number first (trial accounts can only call
 verified numbers in the sign-up country, max 5), and expect the short trial
 disclaimer before the briefing. Twilio signs every callback — the
 `/api/calls/*` endpoints reject unsigned requests with 403.
+Note: Twilio offers no free trials in some regions (e.g. Uganda) — use
+Telegram delivery there (below).
+
+Telegram voice briefings (free forever, no trial or region block): create a
+bot with [@BotFather](https://t.me/BotFather) (`/newbot`), `/start` your bot,
+message [@userinfobot](https://t.me/userinfobot) for your numeric chat id,
+then set the secrets:
+
+```bash
+TELEGRAM_BOT_TOKEN=   # e.g. 123456:AAH... from @BotFather
+TELEGRAM_CHAT_ID=     # e.g. 123456789 from @userinfobot
+```
+
+Tick "Send a Telegram voice briefing" on the task. Each run sends the full
+briefing text plus a spoken voice note (neural voice via Edge TTS, no key).
+Per-task chat-id overrides are supported; the bot must have been `/start`ed
+by the recipient first or Telegram rejects the send.
 
 Customize the agent itself in the Dashboard → **Agent** tab: display name
 (Mike answers to it), persona/instructions, and per-tool ability toggles that
