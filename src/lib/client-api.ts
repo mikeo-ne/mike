@@ -103,11 +103,50 @@ export interface PreferencesDto {
   workdayStart: string | null;
   workdayEnd: string | null;
   preferredCalendar: 'local' | 'google';
+  agentName: string | null;
+  disabledTools: string[];
   updatedAt?: string | null;
 }
 
 /** Backwards-compatible alias (settings == preferences). */
 export type SettingsDto = PreferencesDto;
+
+export interface ToolInfo {
+  name: string;
+  description: string;
+}
+
+export interface ScheduledTaskDto {
+  id: string;
+  name: string;
+  instructions: string;
+  delivery: string[];
+  phone: string | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduledRunDto {
+  id: string;
+  status: string;
+  briefId: string | null;
+  callSid: string | null;
+  callStatus: string | null;
+  outputSummary: string | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface CallsConfigDto {
+  configured: boolean;
+  fromNumber: string | null;
+  defaultTo: string | null;
+}
 
 async function parse<T>(res: Response): Promise<T> {
   const data = (await res.json().catch(() => ({}))) as {
@@ -131,6 +170,17 @@ const json = (body: unknown) => ({
 
 export const api = {
   health: () => fetch('/api/health').then(parse<HealthDto>),
+
+  listTools: () =>
+    fetch('/api/tools')
+      .then(parse<{ tools: ToolInfo[]; count: number }>)
+      .then((r) =>
+        r.tools.map((t) =>
+          typeof t === 'string'
+            ? { name: t, description: '' }
+            : { name: t.name, description: t.description ?? '' },
+        ),
+      ),
 
   listSessions: () =>
     fetch('/api/sessions')
@@ -293,10 +343,69 @@ export const api = {
     workdayStart?: string | null;
     workdayEnd?: string | null;
     preferredCalendar?: 'local' | 'google';
+    agentName?: string | null;
+    disabledTools?: string[];
   }) =>
     fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }).then(parse<{ settings: PreferencesDto }>),
+
+  callsConfig: () => fetch('/api/calls/config').then(parse<CallsConfigDto>),
+
+  scheduledTasks: {
+    list: () =>
+      fetch('/api/scheduled-tasks')
+        .then(parse<{ tasks: ScheduledTaskDto[] }>)
+        .then((r) => r.tasks),
+    get: (id: string) =>
+      fetch(`/api/scheduled-tasks/${id}`).then(
+        parse<{ task: ScheduledTaskDto; runs: ScheduledRunDto[] }>,
+      ),
+    create: (input: {
+      name: string;
+      instructions?: string;
+      delivery?: string[];
+      phone?: string | null;
+      enabled?: boolean;
+    }) =>
+      fetch('/api/scheduled-tasks', json(input)).then(
+        parse<{ task: ScheduledTaskDto }>,
+      ),
+    patch: (
+      id: string,
+      patch: {
+        name?: string;
+        instructions?: string;
+        delivery?: string[];
+        phone?: string | null;
+        enabled?: boolean;
+      },
+    ) =>
+      fetch(`/api/scheduled-tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }).then(parse<{ task: ScheduledTaskDto }>),
+    remove: (id: string) =>
+      fetch(`/api/scheduled-tasks/${id}`, { method: 'DELETE' }).then(
+        parse<{ ok: boolean }>,
+      ),
+    run: (id: string) =>
+      fetch(`/api/scheduled-tasks/${id}/run`, { method: 'POST' }).then(
+        parse<{
+          run: {
+            taskId: string;
+            taskName: string;
+            runId: string;
+            status: 'ok' | 'error';
+            briefId: string | null;
+            callSid: string | null;
+            summary: string | null;
+            error: string | null;
+          };
+        }>,
+      ),
+  },
 };

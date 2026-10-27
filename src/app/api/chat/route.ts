@@ -201,6 +201,11 @@ export async function POST(req: Request) {
       `Additional personal instructions:\n${prefs.systemInstructions}`,
     );
   }
+  if (prefs.agentName && prefs.agentName !== 'Mike') {
+    contextBits.push(
+      `The user calls you "${prefs.agentName}" — refer to yourself by that name.`,
+    );
+  }
   const system =
     contextBits.length > 0
       ? `${MIKE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`
@@ -237,11 +242,14 @@ export async function POST(req: Request) {
       model: resolveChatModel(provider, model, apiKey),
       system,
       messages: toModelMessages(history),
-      tools: buildSdkTools({
-        profileId,
-        sessionId,
-        timezone: userTimezone ?? null,
-      }),
+      tools: buildSdkTools(
+        {
+          profileId,
+          sessionId,
+          timezone: userTimezone ?? null,
+        },
+        { disabled: prefs.disabledTools },
+      ),
       maxSteps: steps,
       abortSignal: req.signal,
       onFinish: async (event) => {

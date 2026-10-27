@@ -123,6 +123,13 @@ async function ensureSchema(db: Database): Promise<void> {
       "updated_at" timestamptz NOT NULL DEFAULT now()
     );
   `);
+  // Agent customization columns (safe on existing DBs via IF NOT EXISTS).
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS "user_preferences" ADD COLUMN IF NOT EXISTS "agent_name" text;
+  `);
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS "user_preferences" ADD COLUMN IF NOT EXISTS "disabled_tools" jsonb;
+  `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "user_preferences" (
       "profile_id" text PRIMARY KEY,
@@ -132,9 +139,48 @@ async function ensureSchema(db: Database): Promise<void> {
       "workday_start" text,
       "workday_end" text,
       "preferred_calendar" text NOT NULL DEFAULT 'local',
+      "agent_name" text,
+      "disabled_tools" jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
     );
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "scheduled_tasks" (
+      "id" uuid PRIMARY KEY,
+      "profile_id" text NOT NULL,
+      "name" text NOT NULL,
+      "instructions" text NOT NULL DEFAULT '',
+      "delivery" jsonb NOT NULL DEFAULT '["hub"]',
+      "phone" text,
+      "enabled" boolean NOT NULL DEFAULT true,
+      "last_run_at" timestamptz,
+      "last_status" text,
+      "run_count" integer NOT NULL DEFAULT 0,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "scheduled_runs" (
+      "id" uuid PRIMARY KEY,
+      "task_id" uuid NOT NULL REFERENCES "scheduled_tasks"("id") ON DELETE CASCADE,
+      "profile_id" text NOT NULL,
+      "status" text NOT NULL DEFAULT 'ok',
+      "brief_id" uuid,
+      "call_sid" text,
+      "call_status" text,
+      "output_summary" text,
+      "error" text,
+      "started_at" timestamptz NOT NULL DEFAULT now(),
+      "finished_at" timestamptz
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "scheduled_tasks_profile_idx" ON "scheduled_tasks" ("profile_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "scheduled_runs_task_idx" ON "scheduled_runs" ("task_id");
   `);
   // Legacy table (replaced by user_preferences): create-if-missing so the
   // migration below works on fresh databases too, then migrate + drop.

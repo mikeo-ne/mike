@@ -51,9 +51,14 @@ export function resolveChatModel(
  * `{ error }` results (instead of throwing) so the agent can explain the
  * failure and offer an alternative rather than aborting the run.
  */
-export function buildSdkTools(ctx: ToolContext): ToolSet {
+export function buildSdkTools(
+  ctx: ToolContext,
+  opts?: { disabled?: string[] },
+): ToolSet {
+  const disabled = new Set(opts?.disabled ?? []);
   const tools: ToolSet = {};
   for (const def of listTools()) {
+    if (disabled.has(def.name)) continue;
     tools[def.name] = tool({
       description: def.description,
       parameters: def.parameters,

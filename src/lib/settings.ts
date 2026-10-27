@@ -11,6 +11,8 @@ export interface ProfilePreferences {
   workdayStart: string | null;
   workdayEnd: string | null;
   preferredCalendar: 'local' | 'google';
+  agentName: string;
+  disabledTools: string[];
 }
 
 export const DEFAULT_PREFERENCES: ProfilePreferences = {
@@ -20,6 +22,8 @@ export const DEFAULT_PREFERENCES: ProfilePreferences = {
   workdayStart: null,
   workdayEnd: null,
   preferredCalendar: 'local',
+  agentName: 'Mike',
+  disabledTools: [],
 };
 
 export function isValidTimezone(tz: string): boolean {
@@ -29,6 +33,17 @@ export function isValidTimezone(tz: string): boolean {
   } catch {
     return false;
   }
+}
+
+function cleanDisabledTools(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const name = item.trim();
+    if (name && seen.size < 60) seen.add(name);
+  }
+  return [...seen];
 }
 
 /** Best-effort lookup of the profile's preferences (defaults when absent). */
@@ -43,7 +58,7 @@ export async function getProfilePreferences(
       .where(eq(schema.userPreferences.profileId, profileId))
       .limit(1);
     const row = rows[0];
-    if (!row) return { ...DEFAULT_PREFERENCES };
+    if (!row) return { ...DEFAULT_PREFERENCES, disabledTools: [] };
     const tz = row.timezone?.trim();
     return {
       timezone: tz && isValidTimezone(tz) ? tz : null,
@@ -53,9 +68,11 @@ export async function getProfilePreferences(
       workdayEnd: row.workdayEnd?.trim() || null,
       preferredCalendar:
         row.preferredCalendar === 'google' ? 'google' : 'local',
+      agentName: row.agentName?.trim() || 'Mike',
+      disabledTools: cleanDisabledTools(row.disabledTools),
     };
   } catch {
-    return { ...DEFAULT_PREFERENCES };
+    return { ...DEFAULT_PREFERENCES, disabledTools: [] };
   }
 }
 

@@ -146,6 +146,10 @@ export const userPreferences = pgTable('user_preferences', {
   workdayEnd: text('workday_end'),
   /** Default calendar source for tools: "local" | "google". */
   preferredCalendar: text('preferred_calendar').notNull().default('local'),
+  /** Agent display name (null = "Mike"). */
+  agentName: text('agent_name'),
+  /** Tool names the agent loop must skip (null = all enabled). */
+  disabledTools: jsonb('disabled_tools').$type<string[]>(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -310,3 +314,58 @@ export const toolExecutions = pgTable(
 
 export type ToolExecution = typeof toolExecutions.$inferSelect;
 export type NewToolExecution = typeof toolExecutions.$inferInsert;
+
+/** Clockwork: scheduled agent tasks (e.g. daily morning briefing). */
+export const scheduledTasks = pgTable(
+  'scheduled_tasks',
+  {
+    id: uuid('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    name: text('name').notNull(),
+    instructions: text('instructions').notNull().default(''),
+    /** Delivery channels: ["hub"] and/or ["hub","call"]. */
+    delivery: jsonb('delivery').$type<string[]>().notNull(),
+    /** E.164 recipient override; null = ALERT_PHONE_NUMBER. */
+    phone: text('phone'),
+    enabled: boolean('enabled').notNull().default(true),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    lastStatus: text('last_status'),
+    runCount: integer('run_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('scheduled_tasks_profile_idx').on(t.profileId)],
+);
+
+export type ScheduledTask = typeof scheduledTasks.$inferSelect;
+export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
+
+/** Clockwork: execution history for scheduled tasks. */
+export const scheduledRuns = pgTable(
+  'scheduled_runs',
+  {
+    id: uuid('id').primaryKey(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => scheduledTasks.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id').notNull(),
+    status: text('status').notNull().default('ok'),
+    briefId: uuid('brief_id'),
+    callSid: text('call_sid'),
+    callStatus: text('call_status'),
+    outputSummary: text('output_summary'),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('scheduled_runs_task_idx').on(t.taskId)],
+);
+
+export type ScheduledRun = typeof scheduledRuns.$inferSelect;
+export type NewScheduledRun = typeof scheduledRuns.$inferInsert;
