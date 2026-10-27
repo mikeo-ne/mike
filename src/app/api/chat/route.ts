@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
+import { streamText } from 'ai';
 import { z } from 'zod';
 import { getDb, schema } from '@/db';
-import { runAgent } from '@/lib/ai/agent';
 import {
   apiKeyFor,
   defaultModel,
@@ -10,26 +10,33 @@ import {
   maxSteps,
   normalizeProvider,
 } from '@/lib/ai/config';
-import { runDemoAgent } from '@/lib/ai/demo';
 import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
 import {
-  encodeStreamEvent,
-  type AgentMessage,
-  type StreamEvent,
-} from '@/lib/ai/types';
+  buildSdkTools,
+  resolveChatModel,
+  toModelMessages,
+} from '@/lib/ai/sdk';
+import type { AgentMessage } from '@/lib/ai/types';
 import '@/lib/tools';
 import { applyProfileCookie, resolveProfile } from '@/lib/profile';
 import { getProfilePreferences } from '@/lib/settings';
-import { truncate } from '@/lib/utils';
+import { safeJson, truncate } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+// The Vercel AI SDK `useChat` client sends `{ id, messages, sessionId?, ... }`.
+// A legacy single-shot `{ content }` body is still accepted (curl, scripts).
+const chatMessageSchema = z
+  .object({ role: z.string(), content: z.string() })
+  .passthrough();
+
 const chatRequestSchema = z.object({
   sessionId: z.string().uuid().optional(),
-  content: z.string().trim().min(1).max(20000),
   systemPromptId: z.string().uuid().nullable().optional(),
+  messages: z.array(chatMessageSchema).optional(),
+  content: z.string().trim().min(1).max(20000).optional(),
 });
 
 function rowToAgentMessage(row: typeof schema.conversations.$inferSelect): AgentMessage | null {
@@ -67,7 +74,32 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { content } = parsed.data;
+
+  // The database is the source of truth for history — the client's messages
+  // are only used to extract the newest user message (avoids duplication).
+  let content: string | null = null;
+  if (parsed.data.messages) {
+    for (let i = parsed.data.messages.length - 1; i >= 0; i -= 1) {
+      const m = parsed.data.messages[i];
+      if (m.role === 'user' && m.content.trim()) {
+        content = m.content.trim();
+        break;
+      }
+    }
+  }
+  content ??= parsed.data.content ?? null;
+  if (!content) {
+    return Response.json(
+      { error: 'No user message found in the request.' },
+      { status: 400 },
+    );
+  }
+  if (content.length > 20000) {
+    return Response.json(
+      { error: 'Message is too long (max 20000 characters).' },
+      { status: 400 },
+    );
+  }
 
   const { db } = await getDb();
 
@@ -193,119 +225,87 @@ export async function POST(req: Request) {
     content,
   });
 
-  // --- Provider / model resolution. ---
+  // --- Provider / model resolution (missing key → streaming demo mode). ---
   const provider = normalizeProvider(session.provider || defaultProvider());
   const model = session.model?.trim() || defaultModel(provider);
   const apiKey = apiKeyFor(provider);
-  const demoMode = !apiKey;
   const steps = maxSteps();
-  const signal = req.signal;
 
-  // --- Stream the agent run as SSE, persisting the transcript after. ---
-  const produced: AgentMessage[] = [];
-  let persistDone = false;
-
-  const persist = async () => {
-    if (persistDone) return;
-    persistDone = true;
-    try {
-      const { db: db2 } = await getDb();
-      for (const m of produced) {
-        await db2.insert(schema.conversations).values({
-          id: randomUUID(),
-          sessionId,
-          role: m.role,
-          content: m.content ?? '',
-          toolCalls: m.toolCalls ?? null,
-          toolName: m.toolName ?? null,
-          toolCallId: m.toolCallId ?? null,
-        });
-      }
-      await db2
-        .update(schema.chatSessions)
-        .set({ updatedAt: new Date() })
-        .where(eq(schema.chatSessions.id, sessionId));
-    } catch (err) {
-      console.error('Failed to persist chat transcript:', err);
-    }
-  };
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const emit = (event: StreamEvent) => {
+  let result: ReturnType<typeof streamText>;
+  try {
+    result = streamText({
+      model: resolveChatModel(provider, model, apiKey),
+      system,
+      messages: toModelMessages(history),
+      tools: buildSdkTools({
+        profileId,
+        sessionId,
+        timezone: userTimezone ?? null,
+      }),
+      maxSteps: steps,
+      abortSignal: req.signal,
+      onFinish: async (event) => {
+        // Persist the produced transcript suffix (assistant + tool rows),
+        // mirroring the pre-existing schema so history stays intact.
         try {
-          controller.enqueue(encoder.encode(encodeStreamEvent(event)));
-        } catch {
-          /* client disconnected */
+          const { db: db2 } = await getDb();
+          for (const step of event.steps) {
+            const calls = step.toolCalls.map((tc) => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              args: (tc.args ?? {}) as Record<string, unknown>,
+            }));
+            if (step.text || calls.length > 0) {
+              await db2.insert(schema.conversations).values({
+                id: randomUUID(),
+                sessionId,
+                role: 'assistant',
+                content: step.text,
+                toolCalls: calls.length > 0 ? calls : null,
+                toolName: null,
+                toolCallId: null,
+              });
+            }
+            // Registry tools are dynamic, so the SDK types results as never —
+            // the runtime shape is stable ({ toolCallId, toolName, result }).
+            const results = step.toolResults as Array<{
+              toolCallId: string;
+              toolName: string;
+              result: unknown;
+            }>;
+            for (const tr of results) {
+              await db2.insert(schema.conversations).values({
+                id: randomUUID(),
+                sessionId,
+                role: 'tool',
+                content: safeJson(tr.result),
+                toolCalls: null,
+                toolName: tr.toolName,
+                toolCallId: tr.toolCallId,
+              });
+            }
+          }
+          await db2
+            .update(schema.chatSessions)
+            .set({ updatedAt: new Date() })
+            .where(eq(schema.chatSessions.id, sessionId));
+        } catch (err) {
+          console.error('Failed to persist chat transcript:', err);
         }
-      };
-      try {
-        emit({ type: 'session', sessionId });
-        if (isNewSession) {
-          // Let the client refresh its session list with the new title.
-          emit({ type: 'notice', message: `session-created:${sessionId}` });
-        }
-        if (demoMode) {
-          emit({
-            type: 'notice',
-            message:
-              `No API key configured for ${provider} — running in demo mode with real tools.`,
-          });
-          const out = await runDemoAgent(
-            content,
-            { profileId, sessionId, timezone: userTimezone },
-            emit,
-            signal,
-          );
-          produced.push(...out);
-        } else {
-          const { produced: out } = await runAgent(
-            {
-              provider,
-              model,
-              apiKey: apiKey as string,
-              system,
-              history,
-              toolContext: { profileId, sessionId, timezone: userTimezone },
-              maxSteps: steps,
-              signal,
-            },
-            emit,
-          );
-          produced.push(...out);
-        }
-        await persist();
-        emit({ type: 'done' });
-      } catch (err) {
-        if (signal.aborted) {
-          await persist();
-        } else {
-          const message =
-            err instanceof Error ? err.message : 'Agent run failed.';
-          console.error('Agent run failed:', err);
-          await persist();
-          emit({ type: 'error', message });
-        }
-      } finally {
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      }
-    },
-    cancel() {
-      void persist();
-    },
-  });
+      },
+    });
+  } catch (err) {
+    console.error('Agent run failed:', err);
+    return Response.json(
+      { error: err instanceof Error ? err.message : 'Agent run failed.' },
+      { status: 500 },
+    );
+  }
 
-  const headers = new Headers({
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
+  // The client (`useChat`) picks the session up from the response headers.
+  const headers = new Headers();
+  headers.set('X-Session-Id', sessionId);
+  if (isNewSession) headers.set('X-Session-Created', '1');
   applyProfileCookie(headers, setCookie);
-  return new Response(stream, { headers });
+  return result.toDataStreamResponse({ headers });
 }

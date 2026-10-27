@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useChat, type Message } from 'ai/react';
 import type { DbMessageRow } from '@/lib/client-api';
 import { api } from '@/lib/client-api';
-import type { StreamEvent } from '@/lib/ai/types';
 
 export interface ToolCallView {
   id: string;
@@ -21,59 +21,123 @@ export interface ChatMessageView {
   streaming?: boolean;
 }
 
-let clientId = 0;
-const nextId = (prefix: string) =>
-  `${prefix}_${Date.now().toString(36)}_${(clientId += 1)}`;
+type Invocation = NonNullable<Message['toolInvocations']>[number];
 
-/** Groups raw DB rows (user / assistant / tool) into UI message views. */
-export function dbRowsToViews(rows: DbMessageRow[]): ChatMessageView[] {
-  const views: ChatMessageView[] = [];
-  const toolIndex = new Map<string, ToolCallView>();
-  for (const row of rows) {
+/** Tools whose results should refresh calendar surfaces immediately. */
+const CALENDAR_MUTATION_TOOLS = new Set([
+  'create_calendar_event',
+  'update_calendar_event',
+  'delete_calendar_event',
+  'modify_calendar_schedule',
+]);
+
+function parseToolResult(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return content;
+  }
+}
+
+/** Groups raw DB rows (user / assistant / tool) into AI SDK messages. */
+export function dbRowsToMessages(rows: DbMessageRow[]): Message[] {
+  const ordered = [...rows].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+  const messages: Message[] = [];
+  const invIndex = new Map<string, Invocation>();
+  const assistantIndex = new Map<string, Message>();
+
+  for (const row of ordered) {
     if (row.role === 'user') {
-      views.push({
-        id: row.id,
-        role: 'user',
-        content: row.content,
-        toolCalls: [],
-      });
+      messages.push({ id: row.id, role: 'user', content: row.content });
     } else if (row.role === 'assistant') {
-      const toolCalls: ToolCallView[] = (row.toolCalls ?? []).map((tc) => {
-        const view: ToolCallView = {
-          id: tc.id,
-          name: tc.name,
+      const toolInvocations: Invocation[] = (row.toolCalls ?? []).map((tc) => {
+        const inv: Invocation = {
+          state: 'call',
+          toolCallId: tc.id,
+          toolName: tc.name,
           args: tc.args ?? {},
-          status: 'done',
         };
-        toolIndex.set(tc.id, view);
-        return view;
+        invIndex.set(tc.id, inv);
+        return inv;
       });
-      views.push({ id: row.id, role: 'assistant', content: row.content, toolCalls });
+      const msg: Message = {
+        id: row.id,
+        role: 'assistant',
+        content: row.content,
+        ...(toolInvocations.length > 0 ? { toolInvocations } : {}),
+      };
+      assistantIndex.set(row.id, msg);
+      messages.push(msg);
     } else if (row.role === 'tool') {
-      let result: unknown = row.content;
-      try {
-        result = JSON.parse(row.content);
-      } catch {
-        /* keep raw text */
-      }
-      const existing = row.toolCallId ? toolIndex.get(row.toolCallId) : undefined;
-      if (existing) {
-        existing.result = result;
-        existing.status = 'done';
+      const result = parseToolResult(row.content);
+      const existing =
+        row.toolCallId != null ? invIndex.get(row.toolCallId) : undefined;
+      if (existing && existing.state !== 'result') {
+        const done: Invocation = {
+          state: 'result',
+          toolCallId: existing.toolCallId,
+          toolName: existing.toolName,
+          args: 'args' in existing ? existing.args : {},
+          result,
+        };
+        invIndex.set(done.toolCallId, done);
+        for (const msg of messages) {
+          if (!msg.toolInvocations) continue;
+          const i = msg.toolInvocations.findIndex(
+            (t) => t.toolCallId === done.toolCallId,
+          );
+          if (i >= 0) msg.toolInvocations[i] = done;
+        }
       } else {
-        const lastAssistant = [...views]
+        // Orphaned tool row (e.g. aborted run): attach to the last assistant
+        // message so the transcript stays visible and coherent.
+        const lastAssistant = [...messages]
           .reverse()
-          .find((v) => v.role === 'assistant');
+          .find((m) => m.role === 'assistant');
         if (lastAssistant) {
-          lastAssistant.toolCalls.push({
-            id: row.toolCallId ?? row.id,
-            name: row.toolName ?? 'tool',
+          const inv: Invocation = {
+            state: 'result',
+            toolCallId: row.toolCallId ?? row.id,
+            toolName: row.toolName ?? 'tool',
             args: {},
             result,
-            status: 'done',
-          });
+          };
+          lastAssistant.toolInvocations = [
+            ...(lastAssistant.toolInvocations ?? []),
+            inv,
+          ];
         }
       }
+    }
+  }
+  return messages;
+}
+
+/** Maps AI SDK messages to the views rendered by MessageBubble. */
+export function messagesToViews(
+  messages: Message[],
+  streamingId: string | null,
+): ChatMessageView[] {
+  const views: ChatMessageView[] = [];
+  for (const m of messages) {
+    if (m.role === 'user') {
+      views.push({ id: m.id, role: 'user', content: m.content, toolCalls: [] });
+    } else if (m.role === 'assistant') {
+      views.push({
+        id: m.id,
+        role: 'assistant',
+        content: m.content,
+        toolCalls: (m.toolInvocations ?? []).map((t) => ({
+          id: t.toolCallId,
+          name: t.toolName,
+          args: (t.args ?? {}) as Record<string, unknown>,
+          result: t.state === 'result' ? t.result : undefined,
+          status: t.state === 'result' ? ('done' as const) : ('running' as const),
+        })),
+        streaming: streamingId === m.id,
+      });
     }
   }
   return views;
@@ -82,226 +146,120 @@ export function dbRowsToViews(rows: DbMessageRow[]): ChatMessageView[] {
 export type ChatStatus = 'idle' | 'loading' | 'streaming';
 
 interface UseAgentChatOptions {
+  /** Active session id (null = draft). Sent with every chat request. */
+  sessionId: string | null;
+  /** System prompt for the next new chat (ignored for existing sessions). */
+  systemPromptId?: string | null;
   onSessionCreated?: (sessionId: string) => void;
   onCalendarChanged?: () => void;
   onTurnFinished?: () => void;
 }
 
-export function useAgentChat(opts: UseAgentChatOptions = {}) {
-  const [messages, setMessages] = useState<ChatMessageView[]>([]);
-  const [status, setStatus] = useState<ChatStatus>('idle');
+export function useAgentChat(opts: UseAgentChatOptions) {
   const [loadingSession, setLoadingSession] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [errorDismissed, setErrorDismissed] = useState(false);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
-  const stop = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+  const chat = useChat({
+    api: '/api/chat',
+    id: opts.sessionId ?? 'draft',
+    // `body` is read fresh for every request, so session switches and new
+    // sessions created mid-conversation are picked up automatically.
+    body: {
+      sessionId: opts.sessionId ?? undefined,
+      systemPromptId: opts.systemPromptId ?? undefined,
+    },
+    onResponse: (res) => {
+      const sid = res.headers.get('X-Session-Id');
+      if (sid) optsRef.current.onSessionCreated?.(sid);
+    },
+    onFinish: (message) => {
+      const names = (message.toolInvocations ?? []).map((t) => t.toolName);
+      if (names.some((n) => CALENDAR_MUTATION_TOOLS.has(n))) {
+        optsRef.current.onCalendarChanged?.();
+      }
+      optsRef.current.onTurnFinished?.();
+    },
+    onError: () => {
+      optsRef.current.onTurnFinished?.();
+    },
+  });
 
-  const startNew = useCallback(() => {
-    abortRef.current?.abort();
-    setMessages([]);
-    setError(null);
-    setStatus('idle');
-  }, []);
+  const status: ChatStatus =
+    chat.status === 'streaming'
+      ? 'streaming'
+      : chat.status === 'submitted'
+        ? 'loading'
+        : 'idle';
 
-  const loadSession = useCallback(async (sessionId: string) => {
-    abortRef.current?.abort();
-    setLoadingSession(true);
-    setError(null);
-    try {
-      const { messages: rows } = await api.getSession(sessionId);
-      setMessages(dbRowsToViews(rows));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load session.');
-      setMessages([]);
-    } finally {
-      setLoadingSession(false);
-    }
-  }, []);
+  const streamingId =
+    chat.status === 'streaming' && chat.messages.length > 0
+      ? (chat.messages[chat.messages.length - 1].role === 'assistant'
+          ? chat.messages[chat.messages.length - 1].id
+          : null)
+      : null;
+
+  const messages = useMemo(
+    () => messagesToViews(chat.messages, streamingId),
+    [chat.messages, streamingId],
+  );
 
   const send = useCallback(
-    async (
-      content: string,
-      sendOpts?: { sessionId?: string | null; systemPromptId?: string | null },
-    ) => {
+    (content: string) => {
       const text = content.trim();
-      if (!text || status !== 'idle') return;
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setError(null);
-      setStatus('loading');
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId('u'), role: 'user', content: text, toolCalls: [] },
-      ]);
+      if (!text || chat.isLoading) return;
+      setErrorDismissed(false);
+      setLoadError(null);
+      void chat.append({ role: 'user', content: text });
+    },
+    [chat],
+  );
 
-      const assistantId = nextId('a');
-      const ensureAssistant = () =>
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === assistantId)) return prev;
-          return [
-            ...prev,
-            {
-              id: assistantId,
-              role: 'assistant',
-              content: '',
-              toolCalls: [],
-              streaming: true,
-            },
-          ];
-        });
-      const patchAssistant = (
-        patch: (m: ChatMessageView) => ChatMessageView,
-      ) =>
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? patch(m) : m)),
-        );
+  const stop = useCallback(() => {
+    chat.stop();
+  }, [chat]);
 
+  const startNew = useCallback(() => {
+    chat.stop();
+    chat.setMessages([]);
+    setLoadError(null);
+    setErrorDismissed(false);
+  }, [chat]);
+
+  const loadSession = useCallback(
+    async (sessionId: string) => {
+      chat.stop();
+      setLoadingSession(true);
+      setLoadError(null);
+      setErrorDismissed(false);
       try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
-          body: JSON.stringify({
-            sessionId: sendOpts?.sessionId ?? undefined,
-            content: text,
-            systemPromptId: sendOpts?.systemPromptId ?? undefined,
-          }),
-          signal: controller.signal,
-        });
-        if (!res.ok || !res.body) {
-          const data = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(
-            typeof data.error === 'string'
-              ? data.error
-              : `Chat request failed (${res.status})`,
-          );
-        }
-
-        setStatus('streaming');
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let finished = false;
-
-        const handleEvent = (event: StreamEvent) => {
-          switch (event.type) {
-            case 'session':
-              optsRef.current.onSessionCreated?.(event.sessionId);
-              break;
-            case 'notice':
-              break; // informational only
-            case 'text':
-              ensureAssistant();
-              patchAssistant((m) => ({ ...m, content: m.content + event.delta }));
-              break;
-            case 'tool_call':
-              ensureAssistant();
-              patchAssistant((m) => ({
-                ...m,
-                toolCalls: [
-                  ...m.toolCalls,
-                  {
-                    id: event.id,
-                    name: event.name,
-                    args: event.args ?? {},
-                    status: 'running' as const,
-                  },
-                ],
-              }));
-              break;
-            case 'tool_result':
-              patchAssistant((m) => ({
-                ...m,
-                toolCalls: m.toolCalls.map((tc) =>
-                  tc.id === event.id
-                    ? { ...tc, result: event.result, status: 'done' as const }
-                    : tc,
-                ),
-              }));
-              if (
-                event.name === 'create_calendar_event' ||
-                event.name === 'update_calendar_event' ||
-                event.name === 'delete_calendar_event'
-              ) {
-                optsRef.current.onCalendarChanged?.();
-              }
-              break;
-            case 'done':
-              finished = true;
-              break;
-            case 'error':
-              throw new Error(event.message);
-          }
-        };
-
-        while (!finished) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const frames = buffer.split('\n\n');
-          buffer = frames.pop() ?? '';
-          for (const frame of frames) {
-            for (const line of frame.split('\n')) {
-              const trimmed = line.trim();
-              if (!trimmed.startsWith('data:')) continue;
-              const payload = trimmed.slice(5).trim();
-              if (!payload) continue;
-              try {
-                handleEvent(JSON.parse(payload) as StreamEvent);
-              } catch (err) {
-                if (err instanceof Error && controller.signal.aborted) break;
-                throw err;
-              }
-            }
-          }
-        }
+        const { messages: rows } = await api.getSession(sessionId);
+        chat.setMessages(dbRowsToMessages(rows));
       } catch (err) {
-        if (controller.signal.aborted) {
-          // Keep partial content; mark stream finished.
-        } else {
-          const message =
-            err instanceof Error ? err.message : 'Something went wrong.';
-          setError(message);
-          // Remove the empty assistant placeholder on hard failure.
-          setMessages((prev) =>
-            prev.filter((m) => {
-              if (m.id !== assistantId) return true;
-              return m.content.length > 0 || m.toolCalls.length > 0;
-            }),
-          );
-        }
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, streaming: false } : m,
-          ),
+        setLoadError(
+          err instanceof Error ? err.message : 'Failed to load session.',
         );
-        setStatus('idle');
-        optsRef.current.onTurnFinished?.();
+        chat.setMessages([]);
+      } finally {
+        setLoadingSession(false);
       }
     },
-    [status],
+    [chat],
   );
 
   return {
     messages,
     status,
     loadingSession,
-    error,
+    error: errorDismissed
+      ? null
+      : (chat.error?.message ?? loadError),
     send,
     stop,
     loadSession,
     startNew,
-    clearError: () => setError(null),
+    clearError: () => setErrorDismissed(true),
   };
 }

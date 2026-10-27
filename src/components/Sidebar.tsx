@@ -184,7 +184,7 @@ export function Sidebar(props: SidebarProps) {
       <div className="space-y-2 border-t border-slate-800 px-3 py-3">
         <label
           className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
-          title="Extra instructions appended to Mike's core executive persona"
+          title="Extra instructions appended to Mike's core workspace persona"
         >
           <SlidersHorizontal className="h-3 w-3" />
           Instructions

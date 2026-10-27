@@ -1,28 +1,39 @@
-# Mike — Personal AI Assistant
+# Mike — Workspace AI Assistant
 
-Mike is your elite, proactive executive assistant: a split-screen web app with a
-conversational chat window and a real-time **Mike's Dashboard** (schedule +
-tasks), an AI agent (OpenAI or Anthropic) with function calling, long-term memory
-in Postgres, and a webhook relay for real scheduling updates.
+Mike is your strategic personal workspace assistant in the style of FYI.AI: a
+split-screen web app with a streaming chat window and a real-time
+**Mike's Dashboard** (schedule + tasks + **Project Hub**), an AI agent (OpenAI,
+Anthropic, or any OpenAI-compatible provider) with agentic tools, long-term
+memory in Postgres, and a webhook relay for real scheduling updates.
 
-Instead of just reacting, Mike cross-references project deadlines with your
-calendar, points out conflicts, suggests next actions, and proposes clear time
-slots for tasks.
+Instead of just reacting, Mike coaches you like a digital business coach:
+organizing chaotic ideas, cross-referencing project deadlines with your
+calendar, pointing out conflicts, generating action plans with tracked tasks,
+and saving long-form documents to the Project Hub so they never get lost in
+chat.
 
 ## Features
 
 - **Split-screen UI** — chat on one side, **Mike's Dashboard** on the other:
-  live today-view (now/up-next, conflict warnings, 60s auto-refresh), active
-  tasks with checkboxes, full calendar, workspace notes, prompt library, and
-  settings. Responsive with mobile drawers.
-- **Proactive agent** — hardcoded executive persona (`src/lib/ai/executive.ts`)
-  plus your timezone, scheduling rules, workday bounds, and personal
-  instructions, composed fresh on every turn.
-- **Agentic tools** — structured function calling / tool use:
+  live today-view (now/up-next, conflict warnings, 60s auto-refresh),
+  **Project Hub** (generated summaries, action plans, briefs + file staging),
+  active tasks with checkboxes, full calendar, workspace notes, prompt library,
+  and settings. Responsive with mobile drawers.
+- **Workspace coach persona** — hardcoded strategic persona
+  (`src/lib/ai/executive.ts`) plus your timezone, scheduling rules, workday
+  bounds, and personal instructions, composed fresh on every turn. Concise,
+  professional, deeply actionable.
+- **Agentic tools** (Vercel AI SDK `streamText` + multi-step tool loop) —
+  structured function calling / tool use:
   `get_calendar_schedule` (day/week/month timelines),
   `modify_calendar_schedule` (create/reschedule/update/delete),
   `get_project_context` (workspace memory), `get_daily_agenda`, `manage_tasks`,
+  `summarizeProject` (status summaries → Project Hub),
+  `generateActionPlan` (dated plans + tracked tasks → Project Hub),
   `get_current_time`, plus per-action calendar tools.
+- **Project Hub** — every `summarizeProject` / `generateActionPlan` run saves
+  its long-form document as a brief; the Hub lists, previews, and renders them
+  in Markdown, with a drag-and-drop zone staging files for future ingestion.
 - **Long-term memory (Postgres)** — `conversations` (message logs + tool
   metadata), `user_preferences` (timezone, scheduling rules, workday,
   preferred calendar, instructions), `workspace_context` (notes, projects,
@@ -38,7 +49,8 @@ slots for tasks.
   tokens, API keys server-side only.
 - **Zero-config DB** — embedded PGlite (real Postgres) when
   `DATABASE_URL`/`POSTGRES_URL` is unset; idempotent DDL + migrations on boot.
-- **Demo mode** — no API key? Rule-based replies with *real* tool execution.
+- **Demo mode** — no API key? A streaming mock model explains the setup and
+  echoes your message so the UI is fully clickable.
 
 ## Quickstart
 
@@ -56,7 +68,8 @@ Open the app and try:
 - `Save a project brief: website relaunch, deadline Nov 20.`
 
 Then open **Mike's Dashboard → Workspace** and save a project brief with a
-deadline — ask Mike to plan around it and watch him cross-reference.
+deadline — ask Mike to `summarize it` or `generate an action plan` and watch
+the document land in the **Hub** tab while he cross-references your calendar.
 
 ### Enable full AI
 
@@ -81,13 +94,14 @@ Mike speaks the OpenAI API format, so any OpenAI-compatible provider works via
   AI_PROVIDER=openai
   OPENAI_BASE_URL=https://api.groq.com/openai/v1
   OPENAI_API_KEY=gsk-...
-  AI_MODEL=llama-3.3-70b-versatile
+  AI_MODEL=openai/gpt-oss-120b
   ```
-  Free limits reset daily — plenty for personal use. Any current tool-capable
-  Llama model works; see console.groq.com for the model list.
+  Free limits reset daily — plenty for personal use. (Groq retired the old
+  `llama-3.3-70b-versatile` in August 2026; `openai/gpt-oss-120b` is their
+  recommended replacement — see console.groq.com for the current model list.)
 - **OpenRouter free models**: openrouter.ai → key (`sk-or-...`), then
-  `OPENAI_BASE_URL=https://openrouter.ai/api/v1` with a `:free` model such as
-  `meta-llama/llama-3.3-70b-instruct:free`.
+  `OPENAI_BASE_URL=https://openrouter.ai/api/v1` with a `:free` model from
+  their current model list.
 - **Ollama (local, fully offline)**: install Ollama, run
   `ollama pull llama3.1`, then `OPENAI_BASE_URL=http://localhost:11434/v1`,
   `OPENAI_API_KEY=ollama`, `AI_MODEL=llama3.1`.
@@ -116,15 +130,15 @@ npm run db:push       # push to DATABASE_URL
 ## Architecture
 
 ```
-Browser (React 18, Tailwind)
-  split-screen: chat + Mike's Dashboard (agenda, tasks, calendar, workspace)
-  │  SSE stream + JSON REST
+Browser (React 18, Tailwind, Vercel AI SDK useChat)
+  split-screen: chat + Mike's Dashboard (today, hub, calendar, workspace…)
+  │  AI data stream + JSON REST
   ▼
 Next.js App Router (Node.js runtime)
   ├─ /api/chat                  streaming agent turns (Mike core + live context)
   ├─ /api/sessions[ /:id]       conversation threads + transcripts
   ├─ /api/system-prompts[/:id]  additional-instructions library
-  ├─ /api/workspace[/:id]       notes / projects / guidelines / briefs
+  ├─ /api/workspace[/:id]       notes / projects / guidelines / briefs (Hub feed)
   ├─ /api/tasks[/:id]           task list CRUD
   ├─ /api/calendar/events[/:id] local event CRUD (local|google routing)
   ├─ /api/calendar/agenda       daily agenda (dashboard feed)
@@ -133,28 +147,34 @@ Next.js App Router (Node.js runtime)
   ├─ /api/tools (GET)           tool catalogue (name, description, JSON schema)
   └─ /api/tools/:name (POST)    generic audited tool-execution gateway
   ▼
-Agent loop (src/lib/ai) ──► OpenAI Chat Completions  (function calling)
-  multi-step, max AGENT_MAX_STEPS ──► Anthropic Messages (tool use)
-  ▼ executes via registry (validated + audited)
+streamText agentic loop (Vercel AI SDK, max AGENT_MAX_STEPS)
+  ├─► OpenAI-compatible chat model (function calling; OPENAI_BASE_URL → Groq/…)
+  ├─► Anthropic Messages (tool use)
+  └─► streaming demo mock when no API key is configured
+  ▼ tools execute via registry (zod-validated, profile-scoped, audited)
 Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
   get_calendar_schedule, modify_calendar_schedule, get_project_context,
-  manage_tasks, get_daily_agenda, list/create/update/delete_calendar_event,
-  get_current_time
+  manage_tasks, summarizeProject, generateActionPlan, get_daily_agenda,
+  list/create/update/delete_calendar_event, get_current_time
   ▼ mutations also fan out to CALENDAR_WEBHOOK_URL (fire-and-forget)
 ```
 
 ### Request flow for one chat turn
 
-1. `POST /api/chat` validates input, resolves the profile, loads/creates the
-   session, loads preferences + selected instructions, and composes the system
-   prompt: **Mike's hardcoded core + live context** (timezone, rules, workday,
-   preferred calendar, instructions).
-2. The agent loop streams one provider step at a time; each `tool_call` is
-   validated against its zod schema, executed profile-scoped, audit-logged, and
-   fed back until a text-only answer (or `AGENT_MAX_STEPS`). Calendar mutations
-   also POST their payload to the webhook relay.
-3. SSE events (`session`, `text`, `tool_call`, `tool_result`, `done`, `error`)
-   stream to the client; the full transcript lands in `conversations`.
+1. `POST /api/chat` accepts the `useChat` body (`{ messages, sessionId?,
+   systemPromptId? }`, plus a legacy `{ content }` single-shot form), resolves
+   the profile, loads/creates the session, loads preferences + selected
+   instructions, and composes the system prompt: **Mike's hardcoded core +
+   live context** (timezone, rules, workday, preferred calendar,
+   instructions).
+2. `streamText` runs the multi-step agentic loop (up to `AGENT_MAX_STEPS`):
+   each tool call is validated against its zod schema, executed
+   profile-scoped, audit-logged, and fed back until a text answer is produced.
+   Calendar mutations also POST their payload to the webhook relay.
+3. The AI data stream (`0:` text deltas, tool-call/tool-result parts, finish
+   parts) streams to `useChat`; the session id travels in the `X-Session-Id`
+   response header and the full transcript lands in `conversations` via
+   `onFinish`.
 
 ### Database schema
 
@@ -164,7 +184,7 @@ Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
 | `conversations` | Message logs with metadata: `user` / `assistant` (+`tool_calls`) / `tool` |
 | `system_prompts` | Global seeds + user instructions appended to Mike's core |
 | `user_preferences` | Timezone, scheduling rules, workday, preferred calendar, instructions |
-| `workspace_context` | Notes, projects, guidelines, briefs (Mike's background memory) |
+| `workspace_context` | Notes, projects, guidelines, briefs (Hub feed + Mike's memory) |
 | `tasks` | Task list: status, priority, due dates |
 | `calendar_events` | Profile-scoped local events |
 | `calendar_connections` | Encrypted external OAuth tokens (Google) |
@@ -195,8 +215,9 @@ defineTool({
 
 2. Import it from `src/lib/tools/index.ts`.
 
-That's it — the tool is now available to Mike, listed at `GET /api/tools`, and
-executable via `POST /api/tools/my_tool` (validated + audited).
+That's it — the tool is now available to Mike's agentic loop, listed at
+`GET /api/tools`, and executable via `POST /api/tools/my_tool`
+(`{ args }`, validated + audited).
 
 ## Webhook relay
 
@@ -226,7 +247,7 @@ secrets. Failures never break tool execution ( mock mode when unset).
 | `GET /api/health` | Provider/model, `demoMode`, `database` mode |
 | `GET/POST /api/sessions` | List / create conversations |
 | `GET/PATCH/DELETE /api/sessions/:id` | Thread + transcript / update / delete |
-| `POST /api/chat` | `{ sessionId?, content, systemPromptId? }` → SSE stream |
+| `POST /api/chat` | `useChat` body (`{ messages, sessionId?, systemPromptId? }`) → AI data stream + `X-Session-Id`; legacy `{ content }` also accepted |
 | `GET/POST /api/system-prompts` | List / create instruction prompts |
 | `PATCH/DELETE /api/system-prompts/:id` | Update / delete prompt |
 | `GET/POST /api/workspace` | List (`?query&kind&limit`) / create entry |
@@ -245,8 +266,9 @@ secrets. Failures never break tool execution ( mock mode when unset).
 | `GET /api/tools` | Tool catalogue with JSON schemas |
 | `POST /api/tools/:name` | `{ args, sessionId? }` → `{ result }` |
 
-SSE event examples from `/api/chat`: `session`, `tool_call`, `tool_result`,
-`text` (deltas), `done`, `error` — see `src/lib/ai/types.ts`.
+The `/api/chat` stream follows the Vercel AI SDK v4 data-stream protocol
+(`f:` message id, `0:` text deltas, `9:`/`a:` tool-call/result parts, `e:`/`d:`
+finish parts) — see `src/lib/ai/sdk.ts` and `src/hooks/useAgentChat.ts`.
 
 ## Google Calendar (OAuth)
 
@@ -299,11 +321,11 @@ grant at Google). Only least-privilege scopes are requested (`openid email` +
 ```
 src/
   app/                    Next.js App Router: page, layout, /api/* routes
-  components/             Chat, Dashboard, Calendar/Workspace/Prompts/Settings, …
-  hooks/useAgentChat.ts   SSE streaming chat state hook
+  components/             Chat, Dashboard, ProjectHub, FileDropzone, Calendar/… panels
+  hooks/useAgentChat.ts   useChat wrapper: views, transcript loading, refresh hooks
   lib/
-    ai/                   executive core, provider adapters, agent loop, demo
-    tools/                tool registry + time/calendar/agenda/schedule/workspace/tasks
+    ai/                   workspace persona, AI SDK wiring, provider config, types
+    tools/                tool registry + time/calendar/agenda/schedule/workspace/tasks/projects
     calendar/             local store, Google client, tz windows, webhook relay
     tasks.ts              shared task store (REST + tool)
     settings.ts           preference lookups (server)

@@ -8,7 +8,7 @@
  *   3. Import the file from `src/lib/tools/index.ts`.
  *
  * The tool then automatically becomes available to:
- *   - the AI agent loop (`src/lib/ai/agent.ts`),
+ *   - the agentic loop (`streamText` in `src/app/api/chat/route.ts`),
  *   - REST execution via `POST /api/tools/[name]`,
  *   - the machine-readable catalogue at `GET /api/tools`.
  */

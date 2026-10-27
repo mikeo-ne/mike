@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   CalendarDays,
+  FileText,
   FlaskConical,
+  KeyRound,
+  ListChecks,
   Loader2,
   Menu,
   PanelRight,
@@ -20,16 +23,16 @@ import { MessageBubble } from './MessageBubble';
 
 const SUGGESTIONS = [
   {
+    icon: FileText,
+    label: 'Summarize Project Apollo and save it to the hub',
+  },
+  {
+    icon: ListChecks,
+    label: 'Generate an action plan for the product launch',
+  },
+  {
     icon: CalendarDays,
     label: "What's on my calendar this week?",
-  },
-  {
-    icon: Sparkles,
-    label: 'Schedule lunch with Sara tomorrow at 12:30',
-  },
-  {
-    icon: FlaskConical,
-    label: 'What can you do?',
   },
 ];
 
@@ -121,11 +124,11 @@ export function ChatInterface(props: ChatInterfaceProps) {
             <div className="truncate text-lg font-bold leading-tight tracking-tight text-slate-50">
               Mike
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <span className="hidden truncate font-mono sm:inline">
-                {provider} · {model}
-              </span>
-              <span className="truncate font-mono sm:hidden">{provider}</span>
+            <div
+              className="flex items-center gap-1.5 text-[11px] text-slate-400"
+              title={`${provider} · ${model}`}
+            >
+              <span className="truncate">Workspace AI Assistant</span>
               {demoMode && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-px font-medium text-amber-300">
                   <FlaskConical className="h-3 w-3" />
@@ -135,11 +138,18 @@ export function ChatInterface(props: ChatInterfaceProps) {
             </div>
           </div>
         </div>
+        <span
+          title="Secure data encryption keys — placeholder"
+          className="ml-auto flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-700 px-2 py-1.5 text-[11px] text-slate-500"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">keys</span>
+        </span>
         <button
           type="button"
           onClick={onTogglePanel}
           className={cn(
-            'ml-auto rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+            'rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-slate-100',
             panelOpen && 'bg-slate-800 text-slate-100',
           )}
           aria-label="Toggle side panel"
@@ -169,9 +179,8 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 Hi, I&apos;m Mike
               </h2>
               <p className="mt-1 max-w-md text-sm text-slate-400">
-                Your hyper-organized executive assistant. I manage your
-                calendar with extreme care — always checking for conflicts
-                before booking.
+                Your strategic workspace assistant — I coach, organize,
+                schedule, and track every action item to done.
               </p>
               <div className="mt-6 grid w-full max-w-lg gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -269,8 +278,8 @@ export function ChatInterface(props: ChatInterfaceProps) {
           </div>
           <p className="mt-1.5 text-center text-[11px] text-slate-500">
             {demoMode
-              ? 'Demo mode — add OPENAI_API_KEY or ANTHROPIC_API_KEY to .env for full AI.'
-              : 'The assistant can call tools (calendar, time). Review tool cards to see what ran.'}
+              ? 'Demo mode — add OPENAI_API_KEY or ANTHROPIC_API_KEY to secrets for full AI.'
+              : 'Mike calls tools (calendar, tasks, projects). Long-form docs land in the Project Hub.'}
           </p>
         </div>
       </div>

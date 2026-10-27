@@ -16,12 +16,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { eq, isNull, sql } from 'drizzle-orm';
+import { eq, isNull, or, sql } from 'drizzle-orm';
 import { drizzle as drizzlePg, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import postgres from 'postgres';
 import * as schema from './schema';
-import { SEED_PROMPTS } from './seed-prompts';
+import {
+  LEGACY_DEFAULT_SEED_CONTENTS,
+  LEGACY_DEFAULT_SEED_NAMES,
+  SEED_PROMPTS,
+} from './seed-prompts';
 
 export type Database = PostgresJsDatabase<typeof schema>;
 export type DatabaseMode = 'postgres' | 'pglite';
@@ -244,11 +248,36 @@ async function ensureSchema(db: Database): Promise<void> {
 }
 
 async function seedGlobalPrompts(db: Database): Promise<void> {
-  // Rename the legacy seed to the current "Mike" branding when present.
-  await db
-    .update(schema.systemPrompts)
-    .set({ name: 'Mike — Executive Assistant', updatedAt: new Date() })
-    .where(eq(schema.systemPrompts.name, 'MIKE — Executive Assistant'));
+  // Migrate untouched legacy defaults to the current workspace persona.
+  // Branding (name) is always refreshed; content is only replaced when it
+  // still matches a known legacy seed — user-edited prompts are left alone.
+  const currentDefault =
+    SEED_PROMPTS.find((p) => p.isDefault) ?? SEED_PROMPTS[0];
+  const legacyRows = await db
+    .select({
+      id: schema.systemPrompts.id,
+      name: schema.systemPrompts.name,
+      content: schema.systemPrompts.content,
+    })
+    .from(schema.systemPrompts)
+    .where(
+      or(
+        ...LEGACY_DEFAULT_SEED_NAMES.map((n) =>
+          eq(schema.systemPrompts.name, n),
+        ),
+      ),
+    );
+  for (const row of legacyRows) {
+    const resetContent = LEGACY_DEFAULT_SEED_CONTENTS.includes(row.content);
+    await db
+      .update(schema.systemPrompts)
+      .set({
+        name: currentDefault.name,
+        content: resetContent ? currentDefault.content : row.content,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.systemPrompts.id, row.id));
+  }
   // Top up by name so new seeds appear on existing databases too — never
   // touching user-created prompts. Uses only the portable query builder:
   // raw execute() result shapes differ per driver.
