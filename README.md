@@ -70,6 +70,32 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+#### $0 option — free AI (no credit card)
+
+Mike speaks the OpenAI API format, so any OpenAI-compatible provider works via
+`OPENAI_BASE_URL` (key goes in `OPENAI_API_KEY`, model in `AI_MODEL`):
+
+- **Groq free tier** (recommended): sign up at groq.com → API Keys → create one
+  (starts with `gsk-...`, no card required). Then:
+  ```env
+  AI_PROVIDER=openai
+  OPENAI_BASE_URL=https://api.groq.com/openai/v1
+  OPENAI_API_KEY=gsk-...
+  AI_MODEL=llama-3.3-70b-versatile
+  ```
+  Free limits reset daily — plenty for personal use. Any current tool-capable
+  Llama model works; see console.groq.com for the model list.
+- **OpenRouter free models**: openrouter.ai → key (`sk-or-...`), then
+  `OPENAI_BASE_URL=https://openrouter.ai/api/v1` with a `:free` model such as
+  `meta-llama/llama-3.3-70b-instruct:free`.
+- **Ollama (local, fully offline)**: install Ollama, run
+  `ollama pull llama3.1`, then `OPENAI_BASE_URL=http://localhost:11434/v1`,
+  `OPENAI_API_KEY=ollama`, `AI_MODEL=llama3.1`.
+
+Database, Google OAuth, and hosting all have free tiers too (PGlite is built
+in, Google Calendar API costs nothing at personal scale, Vercel/Render host
+free) — so Mike runs end-to-end for $0.
+
 ### Use real Postgres
 
 ```bash

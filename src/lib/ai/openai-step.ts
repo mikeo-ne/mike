@@ -62,7 +62,12 @@ export async function runOpenAIStep(opts: {
   signal?: AbortSignal;
   onText: (delta: string) => void;
 }): Promise<OpenAIStepResult> {
-  const client = new OpenAI({ apiKey: opts.apiKey });
+  // OPENAI_BASE_URL (optional) points Mike at any OpenAI-compatible API —
+  // Groq / OpenRouter free tiers, Ollama, etc. Unset = official OpenAI.
+  const client = new OpenAI({
+    apiKey: opts.apiKey,
+    baseURL: process.env.OPENAI_BASE_URL?.trim() || undefined,
+  });
   const stream = await client.chat.completions.create(
     {
       model: opts.model,
