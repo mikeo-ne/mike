@@ -37,7 +37,7 @@ export default function Home() {
     if (status === 'google-connected') {
       setCalendarNotice({
         kind: 'ok',
-        text: 'Google Calendar connected — MIKE can now read and write it.',
+        text: 'Google Calendar connected — Mike can now read and write it.',
       });
       setCalendarRefreshKey((k) => k + 1);
     } else if (status === 'google-error') {
@@ -74,13 +74,34 @@ export default function Home() {
     }
   }, []);
 
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId) ?? null,
+    [sessions, activeSessionId],
+  );
+
+  const defaultPromptId = useMemo(
+    () => prompts.find((p) => p.isDefault)?.id ?? prompts[0]?.id ?? null,
+    [prompts],
+  );
+
+  const effectivePromptId = activeSession
+    ? (activeSession.systemPromptId ?? defaultPromptId)
+    : (pendingPromptId ?? defaultPromptId);
+
   const chat = useAgentChat({
+    sessionId: activeSessionId,
+    systemPromptId: activeSessionId ? undefined : effectivePromptId,
     onSessionCreated: (id) => {
       setActiveSessionId((prev) => (prev === id ? prev : id));
       void refreshSessions();
     },
     onCalendarChanged: () => setCalendarRefreshKey((k) => k + 1),
-    onTurnFinished: () => void refreshSessions(),
+    // Every finished turn may have created briefs, tasks, or events —
+    // refresh the dashboard, hub, calendar, and session list together.
+    onTurnFinished: () => {
+      void refreshSessions();
+      setCalendarRefreshKey((k) => k + 1);
+    },
   });
 
   useEffect(() => {
@@ -120,20 +141,6 @@ export default function Home() {
       /* ignore */
     }
   }, []);
-
-  const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeSessionId) ?? null,
-    [sessions, activeSessionId],
-  );
-
-  const defaultPromptId = useMemo(
-    () => prompts.find((p) => p.isDefault)?.id ?? prompts[0]?.id ?? null,
-    [prompts],
-  );
-
-  const effectivePromptId = activeSession
-    ? (activeSession.systemPromptId ?? defaultPromptId)
-    : (pendingPromptId ?? defaultPromptId);
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -190,12 +197,9 @@ export default function Home() {
 
   const handleSend = useCallback(
     (content: string) => {
-      void chat.send(content, {
-        sessionId: activeSessionId,
-        systemPromptId: activeSessionId ? undefined : effectivePromptId,
-      });
+      chat.send(content);
     },
-    [chat, activeSessionId, effectivePromptId],
+    [chat],
   );
 
   if (healthError) {

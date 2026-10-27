@@ -8,6 +8,7 @@ import './agenda';
 import './schedule';
 import './workspace';
 import './tasks';
+import './projects';
 
 export {
   defineTool,

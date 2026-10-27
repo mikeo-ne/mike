@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   CalendarDays,
   FileText,
+  FolderKanban,
   LayoutDashboard,
   Settings,
   SlidersHorizontal,
@@ -13,14 +14,16 @@ import { cn } from '@/lib/utils';
 import type { SystemPromptDto } from '@/lib/client-api';
 import { CalendarPanel } from './CalendarPanel';
 import { DashboardPanel } from './DashboardPanel';
+import { ProjectHub } from './ProjectHub';
 import { PromptsPanel } from './PromptsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { WorkspacePanel } from './WorkspacePanel';
 
-type Tab = 'dashboard' | 'calendar' | 'workspace' | 'prompts' | 'settings';
+type Tab = 'dashboard' | 'hub' | 'calendar' | 'workspace' | 'prompts' | 'settings';
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof CalendarDays }> = [
   { id: 'dashboard', label: 'Today', icon: LayoutDashboard },
+  { id: 'hub', label: 'Hub', icon: FolderKanban },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'workspace', label: 'Workspace', icon: FileText },
   { id: 'prompts', label: 'Prompts', icon: SlidersHorizontal },
@@ -73,7 +76,7 @@ export function RightPanel(props: RightPanelProps) {
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex items-stretch gap-1 border-b border-slate-800 px-2 py-1.5">
+      <div className="flex items-stretch gap-1 overflow-x-auto border-b border-slate-800 px-2 py-1.5">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -98,6 +101,7 @@ export function RightPanel(props: RightPanelProps) {
             onNavigate={(t) => setTab(t)}
           />
         )}
+        {tab === 'hub' && <ProjectHub refreshKey={calendarRefreshKey} />}
         {tab === 'calendar' && <CalendarPanel refreshKey={calendarRefreshKey} />}
         {tab === 'workspace' && (
           <WorkspacePanel refreshKey={calendarRefreshKey} />
