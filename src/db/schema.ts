@@ -176,6 +176,35 @@ export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type NewCalendarEvent = typeof calendarEvents.$inferInsert;
 
 // ---------------------------------------------------------------------------
+// Calendar connections (external OAuth calendars, e.g. Google)
+// ---------------------------------------------------------------------------
+/**
+ * One row per (profile, provider). Tokens are AES-256-GCM encrypted via
+ * TOKEN_ENCRYPTION_KEY — see src/lib/crypto.ts. Uniqueness on
+ * (profile_id, provider) is enforced by DDL + upsert logic.
+ */
+export const calendarConnections = pgTable('calendar_connections', {
+  id: uuid('id').primaryKey(),
+  profileId: text('profile_id').notNull(),
+  /** External provider id, e.g. "google". */
+  provider: text('provider').notNull(),
+  email: text('email'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type CalendarConnection = typeof calendarConnections.$inferSelect;
+export type NewCalendarConnection = typeof calendarConnections.$inferInsert;
+
+// ---------------------------------------------------------------------------
 // Tool execution audit log
 // ---------------------------------------------------------------------------
 export const toolExecutions = pgTable(

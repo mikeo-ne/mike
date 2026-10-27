@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const { profileId, setCookie } = resolveProfile(req);
   const url = new URL(req.url);
   const args: Record<string, string> = {};
-  for (const key of ['from', 'to', 'query', 'limit']) {
+  for (const key of ['from', 'to', 'query', 'limit', 'calendar']) {
     const v = url.searchParams.get(key);
     if (v !== null && v !== '') args[key] = v;
   }

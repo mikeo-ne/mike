@@ -132,6 +132,21 @@ async function ensureSchema(db: Database): Promise<void> {
     );
   `);
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "calendar_connections" (
+      "id" uuid PRIMARY KEY,
+      "profile_id" text NOT NULL,
+      "provider" text NOT NULL,
+      "email" text,
+      "access_token" text NOT NULL,
+      "refresh_token" text,
+      "expires_at" timestamptz,
+      "scope" text,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now(),
+      UNIQUE ("profile_id", "provider")
+    );
+  `);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "tool_executions" (
       "id" uuid PRIMARY KEY,
       "session_id" uuid REFERENCES "chat_sessions"("id") ON DELETE SET NULL,

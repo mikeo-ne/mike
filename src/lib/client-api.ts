@@ -46,6 +46,13 @@ export interface CalendarEventDto {
   all_day: boolean;
 }
 
+export interface CalendarConnectionDto {
+  provider: string;
+  email: string | null;
+  connectedAt: string;
+  needsReconnect: boolean;
+}
+
 export interface HealthDto {
   ok: boolean;
   provider: 'openai' | 'anthropic';
@@ -124,12 +131,13 @@ export const api = {
       parse<{ deleted: boolean }>,
     ),
 
-  listEvents: (params?: { from?: string; to?: string; query?: string; limit?: number }) => {
+  listEvents: (params?: { from?: string; to?: string; query?: string; limit?: number; calendar?: string }) => {
     const q = new URLSearchParams();
     if (params?.from) q.set('from', params.from);
     if (params?.to) q.set('to', params.to);
     if (params?.query) q.set('query', params.query);
     if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.calendar) q.set('calendar', params.calendar);
     const suffix = q.toString() ? `?${q.toString()}` : '';
     return fetch(`/api/calendar/events${suffix}`).then(
       parse<{ events: CalendarEventDto[]; count: number }>,
@@ -150,6 +158,15 @@ export const api = {
     fetch(`/api/calendar/events/${id}`, { method: 'DELETE' }).then(
       parse<{ deleted: boolean }>,
     ),
+
+  listConnections: () =>
+    fetch('/api/calendar/connections')
+      .then(parse<{ connections: CalendarConnectionDto[] }>)
+      .then((r) => r.connections),
+  disconnectConnection: (providerName: string) =>
+    fetch(`/api/calendar/connections/${providerName}`, {
+      method: 'DELETE',
+    }).then(parse<{ deleted: boolean }>),
 
   getSettings: () =>
     fetch('/api/settings')

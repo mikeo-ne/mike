@@ -25,6 +25,38 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [calendarNotice, setCalendarNotice] = useState<{
+    kind: 'ok' | 'err';
+    text: string;
+  } | null>(null);
+
+  // Surfaces the Google OAuth result after redirecting back from /callback.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('calendar');
+    if (status === 'google-connected') {
+      setCalendarNotice({
+        kind: 'ok',
+        text: 'Google Calendar connected — MIKE can now read and write it.',
+      });
+      setCalendarRefreshKey((k) => k + 1);
+    } else if (status === 'google-error') {
+      setCalendarNotice({
+        kind: 'err',
+        text: params.get('message') || 'Google Calendar connection failed.',
+      });
+    }
+    if (status) {
+      params.delete('calendar');
+      params.delete('message');
+      const q = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + (q ? `?${q}` : ''),
+      );
+    }
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -187,7 +219,27 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-[100dvh] overflow-hidden bg-slate-950 text-slate-100">
+    <main className="relative flex h-[100dvh] overflow-hidden bg-slate-950 text-slate-100">
+      {calendarNotice && (
+        <div
+          className={cn(
+            'absolute left-1/2 top-3 z-50 flex max-w-[92%] -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-2.5 text-sm shadow-xl',
+            calendarNotice.kind === 'ok'
+              ? 'border-emerald-500/40 bg-emerald-950/95 text-emerald-100'
+              : 'border-red-500/40 bg-red-950/95 text-red-100',
+          )}
+        >
+          <span className="flex-1">{calendarNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setCalendarNotice(null)}
+            className="rounded p-0.5 text-lg leading-none opacity-70 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* Left sidebar — drawer on mobile, fixed column on lg+ */}
       {sidebarOpen && (
         <div

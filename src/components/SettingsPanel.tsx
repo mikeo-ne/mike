@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Check, Globe, Loader2 } from 'lucide-react';
-import { api } from '@/lib/client-api';
+import { useCallback, useEffect, useState } from 'react';
+import { CalendarDays, Check, Globe, Loader2, Unplug } from 'lucide-react';
+import { api, type CalendarConnectionDto } from '@/lib/client-api';
 
 const COMMON_TIMEZONES = [
   'Africa/Kampala',
@@ -42,6 +42,26 @@ export function SettingsPanel({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [connections, setConnections] = useState<CalendarConnectionDto[]>([]);
+  const [connLoading, setConnLoading] = useState(true);
+  const [connError, setConnError] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const loadConnections = useCallback(async () => {
+    setConnLoading(true);
+    setConnError(null);
+    try {
+      setConnections(await api.listConnections());
+    } catch (err) {
+      setConnError(
+        err instanceof Error ? err.message : 'Failed to load connections.',
+      );
+    } finally {
+      setConnLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -56,10 +76,11 @@ export function SettingsPanel({
         if (!cancelled) setLoading(false);
       }
     })();
+    void loadConnections();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadConnections]);
 
   const save = async () => {
     setSaving(true);
@@ -75,6 +96,22 @@ export function SettingsPanel({
       setError(err instanceof Error ? err.message : 'Failed to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const disconnectGoogle = async () => {
+    setDisconnecting(true);
+    setConnError(null);
+    try {
+      await api.disconnectConnection('google');
+      setConfirmDisconnect(false);
+      await loadConnections();
+    } catch (err) {
+      setConnError(
+        err instanceof Error ? err.message : 'Failed to disconnect.',
+      );
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -102,6 +139,8 @@ export function SettingsPanel({
       return null;
     }
   })();
+
+  const google = connections.find((c) => c.provider === 'google');
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto">
@@ -167,6 +206,79 @@ export function SettingsPanel({
             </div>
           </div>
         )}
+      </div>
+
+      <div>
+        <div className="flex items-center gap-2 px-1 pb-2">
+          <CalendarDays className="h-4 w-4 text-indigo-400" />
+          <span className="text-sm font-semibold text-slate-100">
+            Connections
+          </span>
+        </div>
+        <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+          <p className="text-xs leading-relaxed text-slate-400">
+            Connect Google Calendar so MIKE can read and write your real
+            schedule alongside the built-in calendar.
+          </p>
+          {connLoading ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading…
+            </div>
+          ) : google ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-emerald-200">
+                    Google Calendar
+                  </div>
+                  {google.email && (
+                    <div className="truncate text-xs text-emerald-200/70">
+                      {google.email}
+                    </div>
+                  )}
+                </div>
+                {confirmDisconnect ? (
+                  <button
+                    type="button"
+                    onClick={() => void disconnectGoogle()}
+                    disabled={disconnecting}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-red-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                  >
+                    {disconnecting && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Confirm
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDisconnect(true)}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                  >
+                    <Unplug className="h-3.5 w-3.5" />
+                    Disconnect
+                  </button>
+                )}
+              </div>
+              {google.needsReconnect && (
+                <p className="mt-1.5 text-xs text-amber-300">
+                  Session expired — disconnect and reconnect to restore access.
+                </p>
+              )}
+            </div>
+          ) : (
+            <a
+              href="/api/calendar/google/connect"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200"
+            >
+              <CalendarDays className="h-4 w-4" />
+              Connect Google Calendar
+            </a>
+          )}
+          {connError && <p className="text-xs text-red-300">{connError}</p>}
+        </div>
       </div>
 
       <div>

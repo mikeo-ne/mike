@@ -55,6 +55,20 @@ CREATE TABLE IF NOT EXISTS "profile_settings" (
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "calendar_connections" (
+  "id" uuid PRIMARY KEY,
+  "profile_id" text NOT NULL,
+  "provider" text NOT NULL,
+  "email" text,
+  "access_token" text NOT NULL,
+  "refresh_token" text,
+  "expires_at" timestamptz,
+  "scope" text,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  UNIQUE ("profile_id", "provider")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "tool_executions" (
   "id" uuid PRIMARY KEY,
   "session_id" uuid REFERENCES "chat_sessions"("id") ON DELETE SET NULL,

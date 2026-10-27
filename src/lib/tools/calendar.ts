@@ -1,11 +1,20 @@
 /**
- * Calendar tools — fetch, create, update, and delete events stored in
- * Postgres. Every operation is scoped to `ctx.profileId`.
+ * Calendar tools — fetch, create, update, and delete events.
+ *
+ * Each tool accepts a `calendar` source: "local" (MIKE's built-in Postgres
+ * calendar, default) or "google" (the profile's connected Google Calendar).
+ * Every operation is scoped to `ctx.profileId`.
  */
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, gte, ilike, isNull, lt, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb, schema } from '@/db';
+import {
+  createGoogleEvent,
+  deleteGoogleEvent,
+  listGoogleEvents,
+  updateGoogleEvent,
+} from '@/lib/calendar/google';
 import { defineTool, type ToolContext } from './registry';
 
 const isoDateTime = z
@@ -15,7 +24,15 @@ const isoDateTime = z
     message: 'Must be a valid ISO 8601 date-time, e.g. "2026-10-28T12:30:00".',
   });
 
-const eventId = z.string().uuid({ message: 'Must be a valid event id (UUID).' });
+const eventId = z.string().max(256);
+
+const calendarSource = z
+  .enum(['local', 'google'])
+  .optional()
+  .default('local')
+  .describe(
+    'Which calendar to use: "local" (MIKE\'s built-in calendar) or "google" (the connected Google Calendar). Use "google" when the user refers to their Google Calendar.',
+  );
 
 function toDto(e: typeof schema.calendarEvents.$inferSelect) {
   return {
@@ -30,8 +47,8 @@ function toDto(e: typeof schema.calendarEvents.$inferSelect) {
 }
 
 /**
- * Finds events overlapping [startsAt, endsAt). Events with no end are treated
- * as 1 hour long for overlap purposes.
+ * Finds local events overlapping [startsAt, endsAt). Events with no end are
+ * treated as 1 hour long for overlap purposes.
  */
 async function findConflicts(
   profileId: string,
@@ -66,6 +83,7 @@ async function findConflicts(
 
 // ---------------------------------------------------------------- list ---
 export const listCalendarEventsSchema = z.object({
+  calendar: calendarSource,
   from: isoDateTime
     .optional()
     .describe('Only include events starting at or after this ISO date-time.'),
@@ -90,6 +108,14 @@ async function listCalendarEvents(
   args: z.infer<typeof listCalendarEventsSchema>,
   ctx: ToolContext,
 ) {
+  if (args.calendar === 'google') {
+    return listGoogleEvents(ctx.profileId, {
+      from: args.from,
+      to: args.to,
+      query: args.query,
+      limit: args.limit,
+    });
+  }
   const { db } = await getDb();
   const conditions = [eq(schema.calendarEvents.profileId, ctx.profileId)];
   if (args.from) {
@@ -127,6 +153,7 @@ defineTool({
 
 // --------------------------------------------------------------- create ---
 export const createCalendarEventSchema = z.object({
+  calendar: calendarSource,
   title: z.string().trim().min(1).max(200).describe('Event title.'),
   starts_at: isoDateTime.describe(
     'Start date-time in ISO 8601, e.g. "2026-10-28T12:30:00". Include a timezone offset when known.',
@@ -143,6 +170,20 @@ async function createCalendarEvent(
   args: z.infer<typeof createCalendarEventSchema>,
   ctx: ToolContext,
 ) {
+  if (args.calendar === 'google') {
+    return createGoogleEvent(
+      ctx.profileId,
+      {
+        title: args.title,
+        starts_at: args.starts_at,
+        ends_at: args.ends_at,
+        description: args.description,
+        location: args.location,
+        all_day: args.all_day,
+      },
+      ctx.timezone,
+    );
+  }
   const startsAt = new Date(args.starts_at);
   const endsAt = args.ends_at
     ? new Date(args.ends_at)
@@ -182,6 +223,7 @@ defineTool({
 
 // --------------------------------------------------------------- update ---
 export const updateCalendarEventSchema = z.object({
+  calendar: calendarSource,
   id: eventId.describe('Id of the event to update (from list_calendar_events).'),
   title: z.string().trim().min(1).max(200).optional(),
   starts_at: isoDateTime.optional(),
@@ -195,6 +237,21 @@ async function updateCalendarEvent(
   args: z.infer<typeof updateCalendarEventSchema>,
   ctx: ToolContext,
 ) {
+  if (args.calendar === 'google') {
+    return updateGoogleEvent(
+      ctx.profileId,
+      args.id,
+      {
+        title: args.title,
+        starts_at: args.starts_at,
+        ends_at: args.ends_at,
+        description: args.description ?? undefined,
+        location: args.location ?? undefined,
+        all_day: args.all_day,
+      },
+      ctx.timezone,
+    );
+  }
   const { db } = await getDb();
   const existing = await db
     .select()
@@ -259,6 +316,7 @@ defineTool({
 
 // --------------------------------------------------------------- delete ---
 export const deleteCalendarEventSchema = z.object({
+  calendar: calendarSource,
   id: eventId.describe('Id of the event to delete (from list_calendar_events).'),
 });
 
@@ -266,6 +324,9 @@ async function deleteCalendarEvent(
   args: z.infer<typeof deleteCalendarEventSchema>,
   ctx: ToolContext,
 ) {
+  if (args.calendar === 'google') {
+    return deleteGoogleEvent(ctx.profileId, args.id);
+  }
   const { db } = await getDb();
   const deleted = await db
     .delete(schema.calendarEvents)

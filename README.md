@@ -112,6 +112,7 @@ Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
 | `system_prompts` | Global seeds (`profile_id IS NULL`) + user prompts, one `is_default` |
 | `profile_settings` | Per-profile preferences (timezone) injected into agent context |
 | `calendar_events` | Profile-scoped events managed by agent tools and the UI |
+| `calendar_connections` | Encrypted external OAuth tokens (Google), one row per profile+provider |
 | `tool_executions` | Audit log: tool, args, result/error, duration, session |
 
 ## Adding a new tool
@@ -203,6 +204,31 @@ src/
 drizzle/0001_init.sql     reference migration for externally-managed DBs
 docker-compose.yml        local Postgres
 ```
+
+## Google Calendar (OAuth)
+
+MIKE's built-in calendar works out of the box. To also read and write a real
+Google Calendar:
+
+1. In **Google Cloud Console**, create a project, configure the OAuth consent
+   screen (External), and create an **OAuth Client ID** (Web application).
+2. Add the authorized redirect URI:
+   `https://<your-host>/api/calendar/google/callback`
+   (local: `http://localhost:3000/api/calendar/google/callback`).
+3. Generate a token-encryption key:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+4. Paste into **Secrets Management** (or `.env` locally):
+   `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`
+   (optional: `GOOGLE_REDIRECT_URI`, `APP_URL`).
+5. Open MIKE → side panel → **Settings → Connections → Connect Google Calendar**,
+   and approve the consent screen.
+6. Ask MIKE about *"my Google calendar"* — every calendar tool accepts
+   `"calendar": "google"` (default `"local"`).
+
+Tokens are AES-256-GCM encrypted at rest, scoped per profile, refreshed
+automatically, and revocable anytime via **Disconnect** (which also revokes the
+grant at Google). Only least-privilege scopes are requested (`openid email` +
+`calendar.events`).
 
 ## Deployment
 
