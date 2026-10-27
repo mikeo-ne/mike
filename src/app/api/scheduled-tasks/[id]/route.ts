@@ -11,9 +11,9 @@ const patchTaskSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   instructions: z.string().trim().max(8000).optional(),
   delivery: z
-    .array(z.enum(['hub', 'call']))
+    .array(z.enum(['hub', 'call', 'telegram']))
     .min(1)
-    .max(2)
+    .max(3)
     .refine((d) => d.includes('hub'), {
       message: 'Delivery must include "hub".',
     })
@@ -23,6 +23,13 @@ const patchTaskSchema = z.object({
     .trim()
     .max(32)
     .regex(/^\+?[0-9 ()-]*$/, 'Phone must look like +256700000000.')
+    .nullable()
+    .optional(),
+  telegramChatId: z
+    .string()
+    .trim()
+    .max(32)
+    .regex(/^-?\d+$/, 'Telegram chat id must be numeric.')
     .nullable()
     .optional(),
   enabled: z.boolean().optional(),
@@ -35,6 +42,7 @@ function dto(row: typeof schema.scheduledTasks.$inferSelect) {
     instructions: row.instructions,
     delivery: Array.isArray(row.delivery) ? row.delivery : ['hub'],
     phone: row.phone,
+    telegramChatId: row.telegramChatId,
     enabled: row.enabled,
     lastRunAt: row.lastRunAt,
     lastStatus: row.lastStatus,
@@ -51,6 +59,8 @@ function runDto(row: typeof schema.scheduledRuns.$inferSelect) {
     briefId: row.briefId,
     callSid: row.callSid,
     callStatus: row.callStatus,
+    telegramMessageId: row.telegramMessageId,
+    telegramStatus: row.telegramStatus,
     outputSummary: row.outputSummary,
     error: row.error,
     startedAt: row.startedAt,
@@ -127,6 +137,9 @@ export async function PATCH(
   }
   if (parsed.data.phone !== undefined) {
     patch.phone = parsed.data.phone?.trim() || null;
+  }
+  if (parsed.data.telegramChatId !== undefined) {
+    patch.telegramChatId = parsed.data.telegramChatId?.trim() || null;
   }
   if (parsed.data.enabled !== undefined) patch.enabled = parsed.data.enabled;
   await db

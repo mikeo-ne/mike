@@ -17,6 +17,13 @@ function fmtWhen(value: string | null): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
 
+function deliveryLabel(delivery: string[]): string {
+  const parts = ['📄 Hub'];
+  if (delivery.includes('call')) parts.push('📞 call');
+  if (delivery.includes('telegram')) parts.push('✈️ Telegram');
+  return parts.join(' + ');
+}
+
 export default function ClockworkPanel() {
   const [tasks, setTasks] = useState<ScheduledTaskDto[]>([]);
   const [calls, setCalls] = useState<CallsConfigDto | null>(null);
@@ -27,6 +34,8 @@ export default function ClockworkPanel() {
   const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS);
   const [wantCall, setWantCall] = useState(false);
   const [phone, setPhone] = useState('');
+  const [wantTelegram, setWantTelegram] = useState(false);
+  const [telegramChatId, setTelegramChatId] = useState('');
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [runsOpen, setRunsOpen] = useState<string | null>(null);
@@ -62,11 +71,15 @@ export default function ClockworkPanel() {
     setSaving(true);
     setError(null);
     try {
+      const delivery = ['hub'];
+      if (wantCall) delivery.push('call');
+      if (wantTelegram) delivery.push('telegram');
       const { task } = await api.scheduledTasks.create({
         name: name.trim(),
         instructions,
-        delivery: wantCall ? ['hub', 'call'] : ['hub'],
+        delivery,
         phone: phone.trim() || null,
+        telegramChatId: telegramChatId.trim() || null,
       });
       setTasks((prev) => [task, ...prev]);
       setFormOpen(false);
@@ -74,6 +87,8 @@ export default function ClockworkPanel() {
       setInstructions(DEFAULT_INSTRUCTIONS);
       setWantCall(false);
       setPhone('');
+      setWantTelegram(false);
+      setTelegramChatId('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create task.');
     } finally {
@@ -158,7 +173,7 @@ export default function ClockworkPanel() {
       {calls && !calls.configured && (
         <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-[11px] text-amber-200">
           Phone calls aren&apos;t configured yet — set the Twilio secrets to
-          enable call delivery. Hub briefings work regardless.
+          enable call delivery. Hub and Telegram briefings work regardless.
         </p>
       )}
 
@@ -214,6 +229,34 @@ export default function ClockworkPanel() {
               />
             </label>
           )}
+          <label className="flex items-center gap-2 text-[11px] text-zinc-300">
+            <input
+              type="checkbox"
+              checked={wantTelegram}
+              onChange={(e) => setWantTelegram(e.target.checked)}
+              disabled={!calls?.telegram.configured}
+              title={
+                calls?.telegram.configured
+                  ? ''
+                  : 'Set TELEGRAM_BOT_TOKEN first'
+              }
+            />
+            Send a Telegram voice briefing
+            {!calls?.telegram.configured && (
+              <span className="text-zinc-500">(needs bot token)</span>
+            )}
+          </label>
+          {wantTelegram && (
+            <label className="block text-[11px] text-zinc-400">
+              Telegram chat id (optional — defaults to yours)
+              <input
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100"
+                placeholder={calls?.telegram.defaultTo ?? 'e.g. 123456789'}
+              />
+            </label>
+          )}
           <button
             onClick={() => void createTask()}
             disabled={saving}
@@ -253,7 +296,7 @@ export default function ClockworkPanel() {
             </span>
           </div>
           <p className="text-[10px] text-zinc-500">
-            {task.delivery.includes('call') ? '📞 Hub + call' : '📄 Hub only'}
+            {deliveryLabel(task.delivery)}
             {' · '}last run {fmtWhen(task.lastRunAt)}
             {task.lastStatus ? ` (${task.lastStatus})` : ''}
           </p>
@@ -307,6 +350,8 @@ export default function ClockworkPanel() {
                   {' · '}
                   {fmtWhen(run.startedAt)}
                   {run.callSid && ` · 📞 ${run.callStatus ?? 'called'}`}
+                  {run.telegramMessageId &&
+                    ` · ✈️ ${run.telegramStatus ?? 'sent'}`}
                   {run.error && (
                     <span className="text-red-300"> · {run.error}</span>
                   )}

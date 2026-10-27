@@ -122,6 +122,7 @@ export interface ScheduledTaskDto {
   instructions: string;
   delivery: string[];
   phone: string | null;
+  telegramChatId: string | null;
   enabled: boolean;
   lastRunAt: string | null;
   lastStatus: string | null;
@@ -136,6 +137,8 @@ export interface ScheduledRunDto {
   briefId: string | null;
   callSid: string | null;
   callStatus: string | null;
+  telegramMessageId: string | null;
+  telegramStatus: string | null;
   outputSummary: string | null;
   error: string | null;
   startedAt: string;
@@ -146,6 +149,22 @@ export interface CallsConfigDto {
   configured: boolean;
   fromNumber: string | null;
   defaultTo: string | null;
+  telegram: {
+    configured: boolean;
+    defaultTo: string | null;
+  };
+}
+
+export interface TaskRunDto {
+  taskId: string;
+  taskName: string;
+  runId: string;
+  status: 'ok' | 'error';
+  briefId: string | null;
+  callSid: string | null;
+  telegramMessageId: string | null;
+  summary: string | null;
+  error: string | null;
 }
 
 async function parse<T>(res: Response): Promise<T> {
@@ -368,6 +387,7 @@ export const api = {
       instructions?: string;
       delivery?: string[];
       phone?: string | null;
+      telegramChatId?: string | null;
       enabled?: boolean;
     }) =>
       fetch('/api/scheduled-tasks', json(input)).then(
@@ -380,6 +400,7 @@ export const api = {
         instructions?: string;
         delivery?: string[];
         phone?: string | null;
+        telegramChatId?: string | null;
         enabled?: boolean;
       },
     ) =>
@@ -394,18 +415,7 @@ export const api = {
       ),
     run: (id: string) =>
       fetch(`/api/scheduled-tasks/${id}/run`, { method: 'POST' }).then(
-        parse<{
-          run: {
-            taskId: string;
-            taskName: string;
-            runId: string;
-            status: 'ok' | 'error';
-            briefId: string | null;
-            callSid: string | null;
-            summary: string | null;
-            error: string | null;
-          };
-        }>,
+        parse<{ run: TaskRunDto }>,
       ),
   },
 };

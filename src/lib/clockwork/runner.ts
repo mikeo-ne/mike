@@ -3,13 +3,13 @@
  *
  * Each run: builds the briefing prompt (Mike core + live context + the task's
  * own instructions), runs a non-streaming agentic loop with the profile's
- * enabled tools, saves the result as a Project Hub brief, optionally phones
- * the user with a spoken version via Twilio, and records everything in
- * `scheduled_runs`.
+ * enabled tools, saves the result as a Project Hub brief, optionally delivers
+ * a spoken version (Telegram voice note and/or Twilio phone call), and
+ * records everything in `scheduled_runs`.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
-import { generateText } from 'ai';
+import { generateText, type LanguageModel } from 'ai';
 import { getDb, schema } from '@/db';
 import {
   apiKeyFor,
@@ -20,10 +20,15 @@ import {
 import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
 import { buildSdkTools, resolveChatModel } from '@/lib/ai/sdk';
 import '@/lib/tools';
-import { getTool } from '@/lib/tools';
 import { saveWorkspaceBrief } from '@/lib/tools/projects';
 import { getProfilePreferences } from '@/lib/settings';
 import { defaultAlertPhone, placeCall } from '@/lib/calls/twilio';
+import {
+  defaultTelegramChat,
+  sendTelegramMessage,
+  sendTelegramVoice,
+} from '@/lib/notify/telegram';
+import { synthesizeSpeech } from '@/lib/notify/speech';
 
 export const CLOCKWORK_DUE_HOURS = 20;
 const MAX_CRON_TASKS = 5;
@@ -35,6 +40,7 @@ export interface TaskRunResult {
   status: 'ok' | 'error';
   briefId: string | null;
   callSid: string | null;
+  telegramMessageId: string | null;
   summary: string | null;
   error: string | null;
 }
@@ -67,6 +73,23 @@ function appUrl(): string {
     );
   }
   return url;
+}
+
+/** Distills a written briefing into a 60–90 second spoken script. */
+async function distillSpeechScript(
+  model: LanguageModel,
+  text: string,
+): Promise<string> {
+  const scripted = await generateText({
+    model,
+    system:
+      'You turn a written briefing into a short spoken phone script. Plain sentences only — no markdown, no bullet characters, no URLs. 60–90 seconds when read aloud. Start with "Good morning" and the day.',
+    prompt: `Briefing to distill:\n\n${text.slice(0, 6000)}`,
+    maxSteps: 1,
+  });
+  const script = scripted.text.replace(/\s+/g, ' ').trim().slice(0, 1400);
+  if (!script) throw new Error('Could not distill a spoken briefing script.');
+  return script;
 }
 
 export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
@@ -110,6 +133,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
       status: 'error',
       briefId: null,
       callSid: null,
+      telegramMessageId: null,
       summary: null,
       error: message,
     };
@@ -121,6 +145,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     const provider = defaultProvider();
     const model = defaultModel(provider);
     const apiKey = apiKeyFor(provider);
+    const chatModel = resolveChatModel(provider, model, apiKey);
 
     const contextBits: string[] = [
       `You are running autonomously as a scheduled Clockwork task ("${task.name}") — no user is watching. Do the work with tools, then write the final briefing.`,
@@ -150,7 +175,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     const system = `${MIKE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`;
 
     const briefing = await generateText({
-      model: resolveChatModel(provider, model, apiKey),
+      model: chatModel,
       system,
       prompt:
         'Produce the morning briefing for this scheduled task. Use your tools: pull today\'s agenda and the week\'s schedule, review open tasks and deadlines, check for conflicts, and arrange meetings where needed (propose concrete open slots inside the workday for anything that needs scheduling; do not double-book). ' +
@@ -169,19 +194,17 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
       text,
     );
 
-    // Spoken delivery: distill to a 60–90 second script, then phone the user.
     const delivery = deliveryOf(task);
     let callSid: string | null = null;
+    let telegramMessageId: string | null = null;
+
+    // Spoken delivery: distill once, then fan out to phone and/or Telegram.
+    let script: string | null = null;
+    if (delivery.includes('call') || delivery.includes('telegram')) {
+      script = await distillSpeechScript(chatModel, text);
+    }
+
     if (delivery.includes('call')) {
-      const scripted = await generateText({
-        model: resolveChatModel(provider, model, apiKey),
-        system:
-          'You turn a written briefing into a short spoken phone script. Plain sentences only — no markdown, no bullet characters, no URLs. 60–90 seconds when read aloud. Start with "Good morning" and the day.',
-        prompt: `Briefing to distill:\n\n${text.slice(0, 6000)}`,
-        maxSteps: 1,
-      });
-      const script = scripted.text.replace(/\s+/g, ' ').trim().slice(0, 1400);
-      if (!script) throw new Error('Could not distill a spoken call script.');
       const to = task.phone?.trim() || defaultAlertPhone();
       if (!to) {
         throw new Error(
@@ -200,7 +223,33 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
         .update(schema.scheduledRuns)
         .set({ outputSummary: script, callSid })
         .where(eq(schema.scheduledRuns.id, runId));
-    } else {
+    }
+
+    if (delivery.includes('telegram')) {
+      const chatId = task.telegramChatId?.trim() || defaultTelegramChat();
+      if (!chatId) {
+        throw new Error(
+          'Telegram delivery needs a recipient: set TELEGRAM_CHAT_ID in secrets or a chat id on the task (and /start your bot).',
+        );
+      }
+      const audio = await synthesizeSpeech(script ?? text);
+      const voice = await sendTelegramVoice(
+        chatId,
+        audio,
+        `${task.name} — ${todayLabel(prefs.timezone)}`,
+      );
+      await sendTelegramMessage(
+        chatId,
+        `${task.name} — ${todayLabel(prefs.timezone)}\n\n${text}`,
+      );
+      telegramMessageId = String(voice.messageId);
+      await db
+        .update(schema.scheduledRuns)
+        .set({ telegramMessageId, telegramStatus: 'sent' })
+        .where(eq(schema.scheduledRuns.id, runId));
+    }
+
+    if (!delivery.includes('call')) {
       await db
         .update(schema.scheduledRuns)
         .set({ outputSummary: text.slice(0, 500), briefId })
@@ -213,6 +262,8 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
         status: 'ok',
         briefId,
         callSid,
+        telegramMessageId,
+        telegramStatus: telegramMessageId ? 'sent' : null,
         finishedAt: new Date(),
         ...(delivery.includes('call') ? {} : { outputSummary: text.slice(0, 500) }),
       })
@@ -227,9 +278,6 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
       })
       .where(eq(schema.scheduledTasks.id, task.id));
 
-    // Keep the tool catalogue honest: drop unknown disabled names is the
-    // settings layer's job; unknown-but-disabled names are simply ignored.
-    void getTool;
     return {
       taskId: task.id,
       taskName: task.name,
@@ -237,6 +285,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
       status: 'ok',
       briefId,
       callSid,
+      telegramMessageId,
       summary: text.slice(0, 300),
       error: null,
     };
