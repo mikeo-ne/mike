@@ -397,3 +397,22 @@ Any Node host works (Vercel, Fly, Render, VPS). Set `DATABASE_URL` to managed
 Postgres and at least one provider key; run `npm run build && npm start`. The
 PGlite fallback keeps working on hosts with a writable filesystem if you skip
 `DATABASE_URL`.
+
+## Document uploads
+
+Drop a PDF or text file (.pdf, .txt, .md, max 4MB on the free tier) on the
+Hub's dropzone. `POST /api/workspace/ingest` parses it (pdf-parse for PDFs)
+and stores it chunked as kind='document' workspace entries, so uploaded docs
+show in the Project Hub and the agent retrieves them via
+`get_project_context` — ask Mike anything about the file's contents.
+Scanned/image-only PDFs have no text to extract and are rejected with a
+clear message (re-export as a real PDF first).
+
+## Voice mode ($0, in-browser)
+
+Chat has a microphone button (dictate — your words are transcribed live and
+sent automatically) and a speaker toggle in the header (Mike reads replies
+aloud, Markdown stripped for natural speech). Both use the free Web Speech
+API built into the browser — no keys, no signup. Best in Chrome/Edge;
+unsupported browsers get a clear note instead of a broken button. The reply
+voice defaults to on and persists per browser.

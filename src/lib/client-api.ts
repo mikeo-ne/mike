@@ -74,7 +74,12 @@ export interface WorkspaceItemDto {
   updatedAt: string;
 }
 
-export type WorkspaceKind = 'note' | 'project' | 'guideline' | 'brief';
+export type WorkspaceKind =
+  | 'note'
+  | 'project'
+  | 'guideline'
+  | 'brief'
+  | 'document';
 
 export interface TaskDto {
   id: string;
@@ -417,5 +422,22 @@ export const api = {
       fetch(`/api/scheduled-tasks/${id}/run`, { method: 'POST' }).then(
         parse<{ run: TaskRunDto }>,
       ),
+  },
+
+  ingestDocument: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return fetch('/api/workspace/ingest', { method: 'POST', body: form }).then(
+      parse<{
+        ok: boolean;
+        filename: string;
+        kind: string;
+        chunks: number;
+        chars: number;
+        pages: number | null;
+        truncated: boolean;
+        items: Array<{ id: string; title: string }>;
+      }>,
+    );
   },
 };
