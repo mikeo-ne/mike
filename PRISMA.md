@@ -67,7 +67,7 @@ Decision needed before Phase 2 route flips.
 ```bash
 npx prisma validate                    # schema compiles
 npx prisma generate                    # build the typed client (needs engines)
-npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script  # full DDL
+npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script  # full DDL
 # Offline equivalent (sandbox: no engine downloads) — same compiler via WASM:
 node -e "const w=require('@prisma/prisma-schema-wasm');const fs=require('fs');w.format(fs.readFileSync('prisma/schema.prisma','utf8'),'{}');console.log('schema OK')"
 ```
