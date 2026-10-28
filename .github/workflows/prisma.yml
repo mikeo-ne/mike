@@ -42,7 +42,7 @@ jobs:
       - name: Prisma migrate diff
         run: |
           set +e
-          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql 2>> /tmp/prisma.log
+          npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > /tmp/ddl.sql 2>> /tmp/prisma.log
           code=$?
           wc -l /tmp/ddl.sql >> /tmp/prisma.log 2>&1
           echo "diff exit: $code" >> /tmp/prisma.log
