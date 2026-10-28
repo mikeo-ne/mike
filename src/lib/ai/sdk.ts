@@ -5,7 +5,9 @@
  *   at Groq / OpenRouter / Ollama; unset = official OpenAI), Anthropic, or an
  *   in-house streaming demo mock when no API key is configured.
  * - buildSdkTools: adapts the registry tools (zod-validated + audited via
- *   executeTool) to AI SDK tool definitions for the agentic loop.
+ *   executeTool) to AI SDK tool definitions for the agentic loop. Parameters
+ *   are sent as strict JSON Schemas (every property required) because Groq
+ *   rejects tool schemas with optional parameters.
  * - toModelMessages: maps stored transcript rows to CoreMessages, dropping
  *   orphaned tool calls/results so providers never see invalid history.
  */
@@ -16,13 +18,20 @@ import {
   simulateReadableStream,
 } from 'ai/test';
 import {
+  jsonSchema,
   tool,
   type CoreAssistantMessage,
   type CoreMessage,
   type LanguageModel,
   type ToolSet,
 } from 'ai';
-import { executeTool, listTools, type ToolContext } from '@/lib/tools';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import {
+  executeTool,
+  listTools,
+  type ToolContext,
+  type ToolDefinition,
+} from '@/lib/tools';
 import type { AgentMessage, ProviderName } from './types';
 
 export function resolveChatModel(
@@ -46,6 +55,31 @@ export function resolveChatModel(
   })(model);
 }
 
+type JsonSchemaInput = Parameters<typeof jsonSchema>[0];
+
+/**
+ * Converts a tool's zod parameters to the JSON Schema sent to the provider.
+ * Groq strictly requires `required` to list EVERY key in `properties`
+ * (optional params are rejected with "invalid JSON schema"), so all
+ * properties are forced into `required`. Strict schemas are accepted by
+ * OpenAI and Anthropic too. Execution-time validation still uses the
+ * original zod schema (see executeTool), so the REST API keeps accepting
+ * partial args.
+ */
+function strictParameters(def: ToolDefinition): JsonSchemaInput {
+  const converted = zodToJsonSchema(def.parameters, {
+    target: 'jsonSchema7',
+  }) as unknown as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+    [key: string]: unknown;
+  };
+  if (converted.properties && typeof converted.properties === 'object') {
+    converted.required = Object.keys(converted.properties);
+  }
+  return converted as unknown as JsonSchemaInput;
+}
+
 /**
  * Adapts every registered tool to an AI SDK tool. Failures are returned as
  * `{ error }` results (instead of throwing) so the agent can explain the
@@ -61,7 +95,7 @@ export function buildSdkTools(
     if (disabled.has(def.name)) continue;
     tools[def.name] = tool({
       description: def.description,
-      parameters: def.parameters,
+      parameters: jsonSchema(strictParameters(def)),
       execute: async (args) => {
         try {
           return await executeTool(def.name, args ?? {}, ctx);
