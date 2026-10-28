@@ -12,7 +12,8 @@
 // Auth: the app does not own credentials. User.id is the Supabase auth user
 // id (created by the handle_new_user trigger / app upsert). No DB-level FK
 // into the auth schema, per Supabase + Prisma guidance.
-// Database URL: reuses the existing POSTGRES_URL secret (Neon today).
+// Connection URL lives in prisma.config.ts (env POSTGRES_URL) — Prisma 7
+// forbids `url` in schema files.
 // See PRISMA.md for the phased migration plan.
 // ============================================================================
 
@@ -22,7 +23,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("POSTGRES_URL")
 }
 
 // ---------------------------------------------------------------------------

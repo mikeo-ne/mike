@@ -53,7 +53,7 @@ Decision needed before Phase 2 route flips.
 
 | # | Decision | Why |
 |---|----------|-----|
-| 1 | Datasource uses `POSTGRES_URL`, not `DATABASE_URL` | One secret; matches existing convention |
+| 1 | Connection URL in `prisma.config.ts` as `POSTGRES_URL`, not `DATABASE_URL` | Prisma 7 forbids `url` in schemas; one secret; matches existing convention |
 | 2 | `User.id` has no default; `@@map("profiles")` | Id must equal the Supabase auth id; `profiles` already exists with the auth trigger |
 | 3 | Added `ProjectMember` table | The sketch had owner-only; PRD §2.1 needs per-project roles |
 | 4 | Added `Project.stage` | PRD pipeline; `status` alone is weaker |
