@@ -1,0 +1,64 @@
+name: prisma
+
+# Gates every schema change: the sandbox has no Prisma engine downloads, so
+# GitHub runners (full internet) are the durable verification gate.
+on:
+  pull_request:
+    paths:
+      - 'prisma/**'
+      - 'prisma.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/prisma.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'prisma/**'
+      - 'prisma.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/prisma.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    env:
+      # Dummy connection string: validate/generate/diff never open a
+      # connection, but the CLI requires the datasource env var to exist.
+      POSTGRES_URL: postgresql://user:pass@localhost:5432/db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate 2>&1 | tee /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
+      - run: npx prisma generate 2>&1 | tee -a /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
+      # NOTE: Actions runs steps with `bash -e`; `set +e` keeps the capture
+      # lines below alive when the diff itself fails.
+      - name: Prisma migrate diff
+        run: |
+          set +e
+          npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > /tmp/ddl.sql 2>> /tmp/prisma.log
+          code=$?
+          wc -l /tmp/ddl.sql >> /tmp/prisma.log 2>&1
+          echo "diff exit: $code" >> /tmp/prisma.log
+          if [ $code -ne 0 ]; then echo "--- ddl.sql head ---" >> /tmp/prisma.log; head -30 /tmp/ddl.sql >> /tmp/prisma.log 2>&1; fi
+          exit $code
+      # The sandbox cannot read Actions logs (blocked host), so failures
+      # report back as a PR comment instead.
+      - name: Report Prisma failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## Prisma CI failure output"
+            echo '```'
+            cat /tmp/prisma.log 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md

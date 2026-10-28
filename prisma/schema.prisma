@@ -1,0 +1,334 @@
+// ============================================================================
+// 1ne — Prisma schema (migration Phase 1: schema port, no live queries yet).
+//
+// Two halves:
+//   A. Product models (User, Project, ProjectMember, Asset, ChatThread,
+//      Message) — the forward model for 1ne collaboration. Each deliberate
+//      deviation from the original sketch is marked WHY below.
+//   B. Legacy mirrors (ChatSession ... ScheduledRun) — 1:1 mappings onto the
+//      live snake_case tables (@@map/@map) so Prisma and Drizzle see the SAME
+//      database. Nothing is renamed until the Phase 3 data migration.
+//
+// Auth: the app does not own credentials. User.id is the Supabase auth user
+// id (created by the handle_new_user trigger / app upsert). No DB-level FK
+// into the auth schema, per Supabase + Prisma guidance.
+// Connection URL lives in prisma.config.ts (env POSTGRES_URL) — Prisma 7
+// forbids `url` in schema files.
+// See PRISMA.md for the phased migration plan.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// A. Identity & access
+// ---------------------------------------------------------------------------
+
+model User {
+  // WHY no @default(uuid()): id must equal the Supabase auth user id, so it
+  // is always set explicitly (never random).
+  id          String   @id @db.Uuid
+  email       String   @unique
+  // WHY @map("display_name"): the live `profiles` table (supabase/schema.sql,
+  // written by the auth trigger) calls it display_name.
+  name        String?  @map("display_name")
+  /// Global role: CREATOR | MANAGER | ADMIN (per-project roles: ProjectMember).
+  role        String   @default("CREATOR")
+  ownedProjects Project[]       @relation("UserProjects")
+  memberships   ProjectMember[]
+  createdAssets Asset[]         @relation("AssetCreator")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// B. Projects & collaboration
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  /// Lifecycle: DRAFT | IN_PROGRESS | COMPLETED.
+  status      String   @default("IN_PROGRESS")
+  /// Pipeline stage (PRD §2.1): in_production | demo_review | distribution
+  /// | marketing_rollout | archived.
+  stage       String   @default("in_production")
+  ownerId     String   @map("owner_id") @db.Uuid
+  owner       User     @relation("UserProjects", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  assets      Asset[]
+  threads     ChatThread[]
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("projects")
+}
+
+/// Per-project sharing (PRD §2.1). Complements — not replaces — User.role,
+/// which is a global label, not a sharing grant.
+model ProjectMember {
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// owner | collaborator | view_only
+  role      String   @default("collaborator")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+// ---------------------------------------------------------------------------
+// C. Asset vault
+// ---------------------------------------------------------------------------
+
+model Asset {
+  id        String  @id @default(uuid()) @db.Uuid
+  filename  String
+  mimeType  String  @map("mime_type") @default("application/octet-stream")
+  /// Friendly bucket: AUDIO | DOCUMENT | IMAGE | ARCHIVE (mime_type precise).
+  fileType  String  @map("file_type") @default("DOCUMENT")
+  // WHY BigInt: stems/zips can exceed the 2GB Int ceiling.
+  fileSize  BigInt  @map("file_size") @default(0)
+  /// Bucket key: "<project_id>/<asset_id>-v<version>-<file>".
+  storagePath String @map("storage_path")
+  // WHY optional: the private RLS bucket serves per-request signed URLs, so
+  // no static URL exists to store at upload time.
+  fileUrl   String? @map("file_url")
+  /// PRD §2.1 version history: re-uploads bump this, old blobs retained.
+  version   Int     @default(1)
+  projectId String  @map("project_id") @db.Uuid
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById String? @map("created_by") @db.Uuid
+  createdBy   User?   @relation("AssetCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt], map: "assets_project_idx")
+  @@map("assets")
+}
+
+// ---------------------------------------------------------------------------
+// D. Project chat threads (forward model — unification in Phase 3)
+// ---------------------------------------------------------------------------
+
+model ChatThread {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String?
+  projectId String   @map("project_id") @db.Uuid
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("chat_threads")
+}
+
+model Message {
+  id       String     @id @default(uuid()) @db.Uuid
+  /// USER | ASSISTANT (tool/system roles fold in during Phase 3 unification).
+  sender   String
+  content  String
+  threadId String     @map("thread_id") @db.Uuid
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([threadId], map: "messages_thread_idx")
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// E. Legacy mirrors — live tables, mapped 1:1 (Drizzle stays authoritative
+// until each surface migrates; see PRISMA.md).
+// ---------------------------------------------------------------------------
+
+model ChatSession {
+  id             String    @id @db.Uuid
+  profileId      String    @map("profile_id")
+  title          String    @default("New conversation")
+  // Scalar on purpose: the live table has no FK to system_prompts.
+  systemPromptId String?   @map("system_prompt_id") @db.Uuid
+  provider       String    @default("openai")
+  model          String?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  conversations  Conversation[]
+  toolExecutions ToolExecution[]
+
+  @@index([profileId], map: "chat_sessions_profile_idx")
+  @@map("chat_sessions")
+}
+
+model Conversation {
+  id          String      @id @db.Uuid
+  sessionId   String      @map("session_id") @db.Uuid
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// user | assistant | tool | system
+  role        String
+  content     String      @default("")
+  toolCalls   Json?       @map("tool_calls") @db.JsonB
+  toolName    String?     @map("tool_name")
+  toolCallId  String?     @map("tool_call_id")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId], map: "conversations_session_idx")
+  @@map("conversations")
+}
+
+model SystemPrompt {
+  id        String    @id @db.Uuid
+  /// Owner profile, or NULL for built-in globals.
+  profileId String?   @map("profile_id")
+  name      String
+  content   String
+  isDefault Boolean   @map("is_default") @default(false)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_prompts")
+}
+
+model UserPreference {
+  profileId          String    @id @map("profile_id")
+  timezone           String?
+  schedulingRules    String?   @map("scheduling_rules")
+  systemInstructions String?   @map("system_instructions")
+  workdayStart       String?   @map("workday_start")
+  workdayEnd         String?   @map("workday_end")
+  preferredCalendar  String    @map("preferred_calendar") @default("local")
+  agentName          String?   @map("agent_name")
+  disabledTools      Json?     @map("disabled_tools") @db.JsonB
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_preferences")
+}
+
+model WorkspaceItem {
+  id        String   @id @db.Uuid
+  profileId String   @map("profile_id")
+  title     String
+  /// note | project | guideline | brief | document
+  kind      String   @default("note")
+  content   String   @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([profileId], map: "workspace_context_profile_idx")
+  @@map("workspace_context")
+}
+
+model Task {
+  id        String    @id @db.Uuid
+  profileId String    @map("profile_id")
+  title     String
+  notes     String?
+  /// open | in_progress | done
+  status    String    @default("open")
+  /// low | medium | high
+  priority  String    @default("medium")
+  dueAt     DateTime? @map("due_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([profileId, status], map: "tasks_profile_status_idx")
+  @@map("tasks")
+}
+
+model CalendarEvent {
+  id          String    @id @db.Uuid
+  profileId   String    @map("profile_id")
+  title       String
+  description String?
+  location    String?
+  startsAt    DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime? @map("ends_at") @db.Timestamptz(6)
+  allDay      Boolean   @map("all_day") @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([profileId, startsAt], map: "calendar_events_profile_starts_idx")
+  @@map("calendar_events")
+}
+
+model CalendarConnection {
+  id           String    @id @db.Uuid
+  profileId    String    @map("profile_id")
+  provider     String
+  email        String?
+  accessToken  String    @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  scope        String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Matches the live inline UNIQUE ("profile_id", "provider") DDL.
+  @@unique([profileId, provider], map: "calendar_connections_profile_id_provider_key")
+  @@map("calendar_connections")
+}
+
+model ToolExecution {
+  id          String       @id @db.Uuid
+  sessionId   String?      @map("session_id") @db.Uuid
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  profileId   String       @map("profile_id")
+  toolName    String       @map("tool_name")
+  args        Json?        @db.JsonB
+  result      Json?        @db.JsonB
+  status      String       @default("ok")
+  error       String?
+  durationMs  Int?         @map("duration_ms")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId], map: "tool_executions_session_idx")
+  @@map("tool_executions")
+}
+
+model ScheduledTask {
+  id             String    @id @db.Uuid
+  profileId      String    @map("profile_id")
+  name           String
+  instructions   String    @default("")
+  delivery       Json      @db.JsonB
+  phone          String?
+  telegramChatId String?   @map("telegram_chat_id")
+  enabled        Boolean   @default(true)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastStatus     String?   @map("last_status")
+  runCount       Int       @map("run_count") @default(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  runs           ScheduledRun[]
+
+  @@index([profileId], map: "scheduled_tasks_profile_idx")
+  @@map("scheduled_tasks")
+}
+
+model ScheduledRun {
+  id                String        @id @db.Uuid
+  taskId            String        @map("task_id") @db.Uuid
+  task              ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  profileId         String        @map("profile_id")
+  status            String        @default("ok")
+  // Scalar on purpose: the live table has no FK to workspace_context.
+  briefId           String?       @map("brief_id") @db.Uuid
+  callSid           String?       @map("call_sid")
+  callStatus        String?       @map("call_status")
+  telegramMessageId String?       @map("telegram_message_id")
+  telegramStatus    String?       @map("telegram_status")
+  outputSummary     String?       @map("output_summary")
+  error             String?
+  startedAt         DateTime      @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt        DateTime?     @map("finished_at") @db.Timestamptz(6)
+
+  @@index([taskId], map: "scheduled_runs_task_idx")
+  @@map("scheduled_runs")
+}
