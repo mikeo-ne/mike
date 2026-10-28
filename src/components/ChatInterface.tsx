@@ -10,15 +10,19 @@ import {
   ListChecks,
   Loader2,
   Menu,
+  Mic,
   PanelRight,
   Send,
   Sparkles,
   Square,
   TriangleAlert,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatMessageView, ChatStatus } from '@/hooks/useAgentChat';
+import { useVoice } from '@/hooks/useVoice';
 import { MessageBubble } from './MessageBubble';
 
 const SUGGESTIONS = [
@@ -75,6 +79,12 @@ export function ChatInterface(props: ChatInterfaceProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const busy = status !== 'idle';
 
+  const submitTextRef = useRef<(text: string) => void>(() => {});
+  const voice = useVoice({
+    onInterim: (text) => setDraft(text),
+    onDictated: (text) => submitTextRef.current(text),
+  });
+
   const scrollToBottom = (smooth = false) => {
     const el = scrollRef.current;
     if (!el) return;
@@ -85,6 +95,19 @@ export function ChatInterface(props: ChatInterfaceProps) {
     if (stickRef.current) scrollToBottom();
   }, [messages, status]);
 
+  // Read the reply aloud when a turn finishes (if voice replies are on).
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy && voice.autoSpeak) {
+      const last = [...messages]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+      const text = last?.content.trim();
+      if (text) voice.speak(text);
+    }
+    wasBusy.current = busy;
+  }, [busy, messages, voice]);
+
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -94,15 +117,20 @@ export function ChatInterface(props: ChatInterfaceProps) {
     setShowScrollDown(!nearBottom && messages.length > 0);
   };
 
-  const submit = () => {
-    const text = draft.trim();
-    if (!text || busy) return;
+  const submitText = (text: string) => {
+    const clean = text.trim();
+    if (!clean || busy) return;
+    voice.stopSpeaking();
+    voice.stopListening();
     setDraft('');
     stickRef.current = true;
     if (inputRef.current) inputRef.current.style.height = 'auto';
-    onSend(text);
+    onSend(clean);
     requestAnimationFrame(() => scrollToBottom());
   };
+  submitTextRef.current = submitText;
+
+  const submit = () => submitText(draft);
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -138,9 +166,35 @@ export function ChatInterface(props: ChatInterfaceProps) {
             </div>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => voice.setAutoSpeak(!voice.autoSpeak)}
+          disabled={!voice.supported.synthesis}
+          className={cn(
+            'ml-auto shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40',
+            voice.autoSpeak && 'bg-indigo-600/20 text-indigo-200',
+            voice.speaking && 'animate-pulse',
+          )}
+          aria-label={
+            voice.autoSpeak ? 'Mute voice replies' : 'Unmute voice replies'
+          }
+          title={
+            !voice.supported.synthesis
+              ? 'Voice replies are not supported in this browser'
+              : voice.autoSpeak
+                ? 'Voice replies on — tap to mute'
+                : 'Voice replies off — tap for Mike to read replies aloud'
+          }
+        >
+          {voice.autoSpeak ? (
+            <Volume2 className="h-5 w-5" />
+          ) : (
+            <VolumeX className="h-5 w-5" />
+          )}
+        </button>
         <span
           title="Secure data encryption keys — placeholder"
-          className="ml-auto flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-700 px-2 py-1.5 text-[11px] text-slate-500"
+          className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-700 px-2 py-1.5 text-[11px] text-slate-500"
         >
           <KeyRound className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">keys</span>
@@ -250,9 +304,38 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 }
               }}
               rows={1}
-              placeholder="Message your assistant… (Enter to send, Shift+Enter for newline)"
+              placeholder={
+                voice.listening
+                  ? 'Listening… speak now'
+                  : 'Message your assistant… (Enter to send, Shift+Enter for newline)'
+              }
               className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
             />
+            <button
+              type="button"
+              onClick={() =>
+                voice.listening
+                  ? voice.stopListening()
+                  : voice.startListening()
+              }
+              disabled={busy || !voice.supported.recognition}
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-40',
+                voice.listening
+                  ? 'animate-pulse bg-red-600 text-white hover:bg-red-500'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
+              )}
+              aria-label={voice.listening ? 'Stop listening' : 'Dictate a message'}
+              title={
+                !voice.supported.recognition
+                  ? 'Voice input is not supported in this browser — try Chrome or Edge'
+                  : voice.listening
+                    ? 'Tap to stop listening'
+                    : 'Tap and speak — your words are sent automatically'
+              }
+            >
+              <Mic className="h-4 w-4" />
+            </button>
             {busy ? (
               <button
                 type="button"
@@ -276,6 +359,11 @@ export function ChatInterface(props: ChatInterfaceProps) {
               </button>
             )}
           </div>
+          {voice.voiceError && (
+            <p className="mt-1.5 text-center text-[11px] text-amber-300">
+              {voice.voiceError}
+            </p>
+          )}
           <p className="mt-1.5 text-center text-[11px] text-slate-500">
             {demoMode
               ? 'Demo mode — add OPENAI_API_KEY or ANTHROPIC_API_KEY to secrets for full AI.'

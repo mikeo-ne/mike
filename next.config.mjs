@@ -3,7 +3,7 @@ const nextConfig = {
   // Keep native / node-only drivers out of the client bundle and treat them
   // as external in the Node.js server runtime.
   experimental: {
-    serverComponentsExternalPackages: ['@electric-sql/pglite', 'postgres'],
+    serverComponentsExternalPackages: ['@electric-sql/pglite', 'postgres', 'pdf-parse', 'pdfjs-dist'],
   },
 };
 

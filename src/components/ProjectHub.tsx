@@ -17,6 +17,7 @@ import { FileDropzone } from './FileDropzone';
 const kindBadge: Record<string, string> = {
   project: 'bg-indigo-600/30 text-indigo-200',
   brief: 'bg-amber-600/30 text-amber-200',
+  document: 'bg-sky-600/30 text-sky-200',
 };
 
 function timeAgo(iso: string): string {
@@ -53,7 +54,12 @@ export function ProjectHub({ refreshKey }: { refreshKey: number }) {
     try {
       const { items: list } = await api.listWorkspace({ limit: 100 });
       setItems(
-        list.filter((i) => i.kind === 'brief' || i.kind === 'project'),
+        list.filter(
+          (i) =>
+            i.kind === 'brief' ||
+            i.kind === 'project' ||
+            i.kind === 'document',
+        ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load the hub.');

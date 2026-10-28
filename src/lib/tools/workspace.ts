@@ -1,7 +1,7 @@
 /**
- * Workspace context tool — lets Mike reference the user's notes, project
- * guidelines, and briefs (workspace_context table) for background and
- * deadlines, and cross-reference them with the calendar.
+ * Workspace context tool — lets Mike reference the user's notes, projects,
+ * guidelines, briefs, and uploaded documents (workspace_context table) for
+ * background and deadlines, and cross-reference them with the calendar.
  */
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
 import { z } from 'zod';
@@ -18,7 +18,7 @@ export const getProjectContextSchema = z.object({
       'Text to search across titles and contents, e.g. a project name or "deadline". Omit to get the most recently updated entries.',
     ),
   kind: z
-    .enum(['note', 'project', 'guideline', 'brief'])
+    .enum(['note', 'project', 'guideline', 'brief', 'document'])
     .optional()
     .describe('Only return entries of this kind.'),
   limit: z.coerce
@@ -33,7 +33,7 @@ export const getProjectContextSchema = z.object({
 defineTool({
   name: 'get_project_context',
   description:
-    'Query the user\'s workspace context (notes, projects, guidelines, briefs) for background information and project deadlines. Use this proactively before answering planning questions, and cross-reference returned deadlines with the calendar schedule to warn about collisions.',
+    'Query the user\'s workspace context (notes, projects, guidelines, briefs, uploaded documents) for background information and project deadlines. Use this proactively before answering planning questions, and cross-reference returned deadlines with the calendar schedule to warn about collisions.',
   parameters: getProjectContextSchema,
   execute: async (args, ctx) => {
     const { db } = await getDb();
