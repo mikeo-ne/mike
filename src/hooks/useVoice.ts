@@ -64,6 +64,9 @@ export function stripMarkdownForSpeech(text: string): string {
 
 const AUTO_SPEAK_KEY = 'mike_voice_reply';
 
+const BRAVE_BLOCKED_REASON =
+  'Brave blocks voice typing — open Mike in Chrome or Edge to dictate.';
+
 interface UseVoiceOptions {
   /** Live transcript while dictating (shown in the input). */
   onInterim?: (text: string) => void;
@@ -83,12 +86,38 @@ export function useVoice(opts: UseVoiceOptions = {}) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [braveBlocked, setBraveBlocked] = useState(false);
   const recRef = useRef<RecognitionInstance | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
+  // Brave exposes SpeechRecognition but blocks the speech servers behind it,
+  // so every attempt fails with a `network` error. Detect it and say so
+  // plainly instead of failing mysteriously.
+  useEffect(() => {
+    try {
+      const nav = window.navigator as Navigator & {
+        brave?: { isBrave?: () => unknown };
+      };
+      const result = nav.brave?.isBrave?.();
+      if (result === true) {
+        setBraveBlocked(true);
+      } else if (result instanceof Promise) {
+        result
+          .then((v) => {
+            if (v === true) setBraveBlocked(true);
+          })
+          .catch(() => {});
+      }
+    } catch {
+      /* not Brave — ignore */
+    }
+  }, []);
+
+  const blockedReason = braveBlocked ? BRAVE_BLOCKED_REASON : null;
+
   const supported = {
-    recognition: recognitionCtor() !== null,
+    recognition: recognitionCtor() !== null && !braveBlocked,
     synthesis: synthesisSupported(),
   };
 
@@ -155,6 +184,10 @@ export function useVoice(opts: UseVoiceOptions = {}) {
   }, []);
 
   const startListening = useCallback(() => {
+    if (blockedReason) {
+      setVoiceError(blockedReason);
+      return;
+    }
     const Ctor = recognitionCtor();
     if (!Ctor) {
       setVoiceError(
@@ -187,6 +220,8 @@ export function useVoice(opts: UseVoiceOptions = {}) {
         setVoiceError(
           'Microphone blocked — allow mic access in the browser address bar, then try again.',
         );
+      } else if (e.error === 'network' && blockedReason) {
+        setVoiceError(blockedReason);
       } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
         setVoiceError(`Voice input stopped (${e.error}). Tap the mic to retry.`);
       }
@@ -201,7 +236,7 @@ export function useVoice(opts: UseVoiceOptions = {}) {
     } catch {
       setVoiceError('Could not start voice input. Tap the mic to retry.');
     }
-  }, [stopSpeaking]);
+  }, [stopSpeaking, blockedReason]);
 
   // Stop everything on unmount so audio never leaks across navigation.
   useEffect(
@@ -218,6 +253,7 @@ export function useVoice(opts: UseVoiceOptions = {}) {
 
   return {
     supported,
+    blockedReason,
     autoSpeak,
     setAutoSpeak,
     speak,

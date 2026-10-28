@@ -1,24 +1,27 @@
 /**
  * Clockwork runner (server-only): executes scheduled tasks.
  *
- * Each run: builds the briefing prompt (Mike core + live context + the task's
- * own instructions), runs a non-streaming agentic loop with the profile's
- * enabled tools, saves the result as a Project Hub brief, optionally delivers
- * a spoken version (Telegram voice note and/or Twilio phone call), and
- * records everything in `scheduled_runs`.
+ * Each run: builds the briefing prompt (slim runner prompt + live context +
+ * the task's own instructions), runs a non-streaming agentic loop with the
+ * profile's enabled tools — paced steps on Clockwork's own model bucket, with
+ * cross-model fallback when a rate limit hits — saves the result as a
+ * Project Hub brief, optionally delivers a spoken version (Telegram voice
+ * note and/or Twilio phone call), and records everything in
+ * `scheduled_runs`.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
-import { generateText, type LanguageModel } from 'ai';
 import { getDb, schema } from '@/db';
 import {
   apiKeyFor,
-  defaultModel,
+  clockworkModel,
   defaultProvider,
+  fallbackModels,
   maxSteps,
 } from '@/lib/ai/config';
-import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
-import { buildSdkTools, resolveChatModel } from '@/lib/ai/sdk';
+import type { ProviderName } from '@/lib/ai/types';
+import { generateTextWithFallback, sleep } from '@/lib/ai/fallback';
+import { buildSdkTools } from '@/lib/ai/sdk';
 import '@/lib/tools';
 import { saveWorkspaceBrief } from '@/lib/tools/projects';
 import { getProfilePreferences } from '@/lib/settings';
@@ -75,18 +78,36 @@ function appUrl(): string {
   return url;
 }
 
+/** Pause between briefing steps so a run never bursts the per-minute budget. */
+function stepDelayMs(): number {
+  const raw = Number.parseInt(
+    process.env.CLOCKWORK_STEP_DELAY_MS ?? '12000',
+    10,
+  );
+  if (!Number.isFinite(raw)) return 12_000;
+  return Math.min(60_000, Math.max(0, raw));
+}
+
 /** Distills a written briefing into a 60–90 second spoken script. */
 async function distillSpeechScript(
-  model: LanguageModel,
+  provider: ProviderName,
+  primary: string,
+  fallbacks: string[],
+  apiKey: string | null,
   text: string,
 ): Promise<string> {
-  const scripted = await generateText({
-    model,
-    system:
-      'You turn a written briefing into a short spoken phone script. Plain sentences only — no markdown, no bullet characters, no URLs. 60–90 seconds when read aloud. Start with "Good morning" and the day.',
-    prompt: `Briefing to distill:\n\n${text.slice(0, 6000)}`,
-    maxSteps: 1,
-  });
+  const scripted = await generateTextWithFallback(
+    provider,
+    primary,
+    fallbacks,
+    apiKey,
+    {
+      system:
+        'You turn a written briefing into a short spoken phone script. Plain sentences only — no markdown, no bullet characters, no URLs. 60–90 seconds when read aloud. Start with "Good morning" and the day.',
+      prompt: `Briefing to distill:\n\n${text.slice(0, 6000)}`,
+      maxSteps: 1,
+    },
+  );
   const script = scripted.text.replace(/\s+/g, ' ').trim().slice(0, 1400);
   if (!script) throw new Error('Could not distill a spoken briefing script.');
   return script;
@@ -146,9 +167,11 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     const prefs = await getProfilePreferences(task.profileId);
     const agentName = prefs.agentName || 'Mike';
     const provider = defaultProvider();
-    const model = defaultModel(provider);
+    // Clockwork runs on its own model bucket so a long briefing never eats
+    // the chat budget (and a busy chat never starves the briefing).
+    const primary = clockworkModel();
+    const fallbacks = fallbackModels(provider, primary);
     const apiKey = apiKeyFor(provider);
-    const chatModel = resolveChatModel(provider, model, apiKey);
 
     const contextBits: string[] = [
       `You are running autonomously as a scheduled Clockwork task ("${task.name}") — no user is watching. Do the work with tools, then write the final briefing.`,
@@ -175,20 +198,34 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     if (task.instructions.trim()) {
       contextBits.push(`This task's instructions:\n${task.instructions.trim()}`);
     }
-    const system = `${MIKE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`;
+    // Slim purpose-built system prompt (not the long chat persona): every
+    // saved token is budget for tool steps under the free tier's per-minute
+    // limit.
+    const system =
+      `You are ${agentName}, a workspace assistant running autonomously — no user is watching. Use your tools to gather facts, then write the final briefing as sharp Markdown. No chit-chat.\n\n[Live context]\n${contextBits.join('\n\n')}`;
 
-    const briefing = await generateText({
-      model: chatModel,
-      system,
-      prompt:
-        'Produce the morning briefing for this scheduled task. Use your tools: pull today\'s agenda and the week\'s schedule, review open tasks and deadlines, check for conflicts, and arrange meetings where needed (propose concrete open slots inside the workday for anything that needs scheduling; do not double-book). ' +
-        'Write the result as sharp Markdown: agenda, deadlines, conflicts, and top 3 next actions. Keep it skimmable.',
-      tools: buildSdkTools(
-        { profileId: task.profileId, timezone: prefs.timezone },
-        { disabled: prefs.disabledTools },
-      ),
-      maxSteps: Math.min(maxSteps(), 6),
-    });
+    const briefing = await generateTextWithFallback(
+      provider,
+      primary,
+      fallbacks,
+      apiKey,
+      {
+        system,
+        prompt:
+          'Produce the morning briefing for this scheduled task. Use your tools: pull today\'s agenda and the week\'s schedule, review open tasks and deadlines, check for conflicts, and arrange meetings where needed (propose concrete open slots inside the workday for anything that needs scheduling; do not double-book). ' +
+          'Write the result as sharp Markdown: agenda, deadlines, conflicts, and top 3 next actions. Keep it skimmable.',
+        tools: buildSdkTools(
+          { profileId: task.profileId, timezone: prefs.timezone },
+          { disabled: prefs.disabledTools },
+        ),
+        maxSteps: Math.min(maxSteps(), 4),
+        // Spread a multi-step briefing over time so it never bursts through
+        // the free tier's per-minute token budget.
+        onStepFinish: async ({ finishReason }) => {
+          if (finishReason === 'tool-calls') await sleep(stepDelayMs());
+        },
+      },
+    );
     const text = briefing.text.trim() || '(The briefing came back empty.)';
 
     const briefId = await saveWorkspaceBrief(
@@ -204,7 +241,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     // Spoken delivery: distill once, then fan out to phone and/or Telegram.
     let script: string | null = null;
     if (delivery.includes('call') || delivery.includes('telegram')) {
-      script = await distillSpeechScript(chatModel, text);
+      script = await distillSpeechScript(provider, primary, fallbacks, apiKey, text);
     }
 
     if (delivery.includes('call')) {

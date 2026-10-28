@@ -22,6 +22,7 @@ export default function Home() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   /** System prompt chosen for the *next* new chat. */
   const [pendingPromptId, setPendingPromptId] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState('Mike');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
@@ -111,13 +112,15 @@ export default function Home() {
         const h = await api.health();
         if (cancelled) return;
         setHealth(h);
-        const [s, p] = await Promise.all([
+        const [s, p, prefs] = await Promise.all([
           api.listSessions(),
           api.listPrompts(),
+          api.getSettings().catch(() => null),
         ]);
         if (cancelled) return;
         setSessions(s);
         setPrompts(p);
+        if (prefs?.agentName) setAgentName(prefs.agentName);
       } catch (err) {
         if (!cancelled) {
           setHealthError(
@@ -294,8 +297,10 @@ export default function Home() {
         demoMode={health.demoMode}
         provider={health.provider}
         model={health.model}
+        agentName={agentName}
         onSend={handleSend}
         onStop={chat.stop}
+        onRetry={chat.retry}
         onClearError={chat.clearError}
         onOpenSidebar={() => setSidebarOpen(true)}
         onTogglePanel={() => setPanelOpen((v) => !v)}

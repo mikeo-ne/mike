@@ -416,3 +416,28 @@ aloud, Markdown stripped for natural speech). Both use the free Web Speech
 API built into the browser — no keys, no signup. Best in Chrome/Edge;
 unsupported browsers get a clear note instead of a broken button. The reply
 voice defaults to on and persists per browser.
+
+## Rate limits & reliability (Groq free tier)
+
+Groq's free tier budgets tokens **per model** (each model gets its own
+per-minute bucket). Mike spreads load instead of hammering one model:
+
+- **Chat** sends on `AI_MODEL` (`openai/gpt-oss-120b`) and, after a 429, the
+  next attempt routes to the backup model automatically. A 429 shows a plain
+  message plus a **Retry** button.
+- **Briefings (Clockwork)** run on `CLOCKWORK_MODEL`
+  (`openai/gpt-oss-20b` by default) — their own bucket, so a long briefing
+  never eats the chat budget. Runs also use a slim system prompt, fewer steps,
+  and a pause between steps (`CLOCKWORK_STEP_DELAY_MS`).
+- Retries honor Groq's own "try again in Ns" hint.
+
+## Finding your way around
+
+The dashboard tabs use plain names: **Today** (schedule, tasks, latest
+briefing), **Projects** (briefs, files, notes), **Briefings** (scheduled
+runs), **Agent** (your assistant's name, voice, and abilities), **Calendar**,
+**Notes**, **Styles** (reply styles), **Settings**.
+
+Voice typing uses your browser's free speech recognition. Note: **Brave
+blocks voice typing** — dictate in Chrome or Edge instead. Spoken replies
+work in every modern browser.

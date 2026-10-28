@@ -12,6 +12,7 @@ import {
   Menu,
   Mic,
   PanelRight,
+  RotateCcw,
   Send,
   Sparkles,
   Square,
@@ -48,8 +49,10 @@ interface ChatInterfaceProps {
   demoMode: boolean;
   provider: string;
   model: string;
+  agentName: string;
   onSend: (content: string) => void;
   onStop: () => void;
+  onRetry: () => void;
   onClearError: () => void;
   onOpenSidebar: () => void;
   onTogglePanel: () => void;
@@ -65,8 +68,10 @@ export function ChatInterface(props: ChatInterfaceProps) {
     demoMode,
     provider,
     model,
+    agentName,
     onSend,
     onStop,
+    onRetry,
     onClearError,
     onOpenSidebar,
     onTogglePanel,
@@ -150,7 +155,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
           </div>
           <div className="min-w-0">
             <div className="truncate text-lg font-bold leading-tight tracking-tight text-slate-50">
-              Mike
+              {agentName}
             </div>
             <div
               className="flex items-center gap-1.5 text-[11px] text-slate-400"
@@ -183,7 +188,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
               ? 'Voice replies are not supported in this browser'
               : voice.autoSpeak
                 ? 'Voice replies on — tap to mute'
-                : 'Voice replies off — tap for Mike to read replies aloud'
+                : `Voice replies off — tap for ${agentName} to read replies aloud`
           }
         >
           {voice.autoSpeak ? (
@@ -230,7 +235,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 <Sparkles className="h-7 w-7 text-white" />
               </div>
               <h2 className="mt-4 text-xl font-semibold text-slate-100">
-                Hi, I&apos;m Mike
+                Hi, I&apos;m {agentName}
               </h2>
               <p className="mt-1 max-w-md text-sm text-slate-400">
                 Your strategic workspace assistant — I coach, organize,
@@ -258,6 +263,14 @@ export function ChatInterface(props: ChatInterfaceProps) {
             <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span className="flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-red-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-600"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Retry
+              </button>
               <button
                 type="button"
                 onClick={onClearError}
@@ -327,11 +340,12 @@ export function ChatInterface(props: ChatInterfaceProps) {
               )}
               aria-label={voice.listening ? 'Stop listening' : 'Dictate a message'}
               title={
-                !voice.supported.recognition
+                voice.blockedReason ??
+                (!voice.supported.recognition
                   ? 'Voice input is not supported in this browser — try Chrome or Edge'
                   : voice.listening
                     ? 'Tap to stop listening'
-                    : 'Tap and speak — your words are sent automatically'
+                    : 'Tap and speak — your words are sent automatically')
               }
             >
               <Mic className="h-4 w-4" />
@@ -367,7 +381,7 @@ export function ChatInterface(props: ChatInterfaceProps) {
           <p className="mt-1.5 text-center text-[11px] text-slate-500">
             {demoMode
               ? 'Demo mode — add OPENAI_API_KEY or ANTHROPIC_API_KEY to secrets for full AI.'
-              : 'Mike calls tools (calendar, tasks, projects). Long-form docs land in the Project Hub.'}
+              : `${agentName} calls tools (calendar, tasks, projects). Long-form docs land in the Project Hub.`}
           </p>
         </div>
       </div>

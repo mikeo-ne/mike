@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ListTodo,
   Loader2,
+  Newspaper,
   Plus,
   RefreshCw,
   Trash2,
@@ -20,6 +21,7 @@ import {
   type AgendaDto,
   type CalendarEventDto,
   type TaskDto,
+  type WorkspaceItemDto,
 } from '@/lib/client-api';
 
 function timeRange(e: CalendarEventDto): string {
@@ -58,12 +60,15 @@ const priorityDot: Record<string, string> = {
 
 interface DashboardPanelProps {
   refreshKey: number;
-  onNavigate: (tab: 'calendar' | 'workspace' | 'settings') => void;
+  onNavigate: (
+    tab: 'calendar' | 'workspace' | 'settings' | 'hub' | 'clockwork',
+  ) => void;
 }
 
 export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) {
   const [agenda, setAgenda] = useState<AgendaDto | null>(null);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [latestBrief, setLatestBrief] = useState<WorkspaceItemDto | null>(null);
   const [calendar, setCalendar] = useState<'local' | 'google'>('local');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +80,14 @@ export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) 
       if (!quiet) setLoading(true);
       setError(null);
       try {
-        const [a, t] = await Promise.all([
+        const [a, t, b] = await Promise.all([
           api.agenda({ calendar }),
           api.listTasks({ limit: 50 }),
+          api.listWorkspace({ kind: 'brief', limit: 1 }).catch(() => null),
         ]);
         setAgenda(a);
         setTasks(t.tasks);
+        setLatestBrief(b?.items?.[0] ?? null);
       } catch (err) {
         if (!quiet) {
           setAgenda(null);
@@ -176,6 +183,54 @@ export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) 
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto">
+      {/* Morning briefing */}
+      <section>
+        <div className="flex items-center gap-2 px-1 pb-2">
+          <Newspaper className="h-4 w-4 text-indigo-400" />
+          <span className="text-sm font-semibold text-slate-100">
+            Morning briefing
+          </span>
+        </div>
+        {latestBrief ? (
+          <div className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-3">
+            <div className="truncate text-sm font-semibold text-slate-100">
+              {latestBrief.title}
+            </div>
+            <div className="text-[11px] text-indigo-200/70">
+              {new Date(latestBrief.updatedAt).toLocaleString('en-GB', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </div>
+            <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-slate-300">
+              {(latestBrief.content ?? '').slice(0, 160)}
+              {(latestBrief.content ?? '').length > 160 ? '…' : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() => onNavigate('hub')}
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-indigo-300 hover:text-indigo-200"
+            >
+              Open in Projects <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs leading-relaxed text-slate-300">
+            No briefing yet — your daily brief will land here each morning.
+            <button
+              type="button"
+              onClick={() => onNavigate('clockwork')}
+              className="ml-1 inline-flex items-center gap-0.5 font-medium text-indigo-300 hover:text-indigo-200"
+            >
+              Set one up <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+      </section>
+
       {/* Schedule */}
       <section>
         <div className="flex items-center gap-2 px-1 pb-2">

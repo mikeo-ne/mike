@@ -7,8 +7,12 @@ import {
   apiKeyFor,
   defaultModel,
   defaultProvider,
+  fallbackModels,
+  isRateLimitError,
   maxSteps,
   normalizeProvider,
+  pickModel,
+  reportRateLimit,
 } from '@/lib/ai/config';
 import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
 import {
@@ -232,7 +236,10 @@ export async function POST(req: Request) {
 
   // --- Provider / model resolution (missing key → streaming demo mode). ---
   const provider = normalizeProvider(session.provider || defaultProvider());
-  const model = session.model?.trim() || defaultModel(provider);
+  const requested = session.model?.trim() || defaultModel(provider);
+  // Route around models that recently hit a rate limit: each model gets its
+  // own free-tier token bucket, so the backup usually answers immediately.
+  const model = pickModel(requested, fallbackModels(provider, requested));
   const apiKey = apiKeyFor(provider);
   const steps = maxSteps();
 
@@ -251,7 +258,13 @@ export async function POST(req: Request) {
         { disabled: prefs.disabledTools },
       ),
       maxSteps: steps,
+      // Single attempt per model: a 429 cools that model down and the user's
+      // retry routes onto the backup model instead of hammering the same one.
+      maxRetries: 0,
       abortSignal: req.signal,
+      onError: (event) => {
+        if (isRateLimitError(event.error)) reportRateLimit(model);
+      },
       onFinish: async (event) => {
         // Persist the produced transcript suffix (assistant + tool rows),
         // mirroring the pre-existing schema so history stays intact.

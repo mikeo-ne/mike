@@ -35,12 +35,12 @@ type Tab =
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof CalendarDays }> = [
   { id: 'dashboard', label: 'Today', icon: LayoutDashboard },
-  { id: 'hub', label: 'Hub', icon: FolderKanban },
-  { id: 'clockwork', label: 'Clockwork', icon: Clock },
+  { id: 'hub', label: 'Projects', icon: FolderKanban },
+  { id: 'clockwork', label: 'Briefings', icon: Clock },
   { id: 'agent', label: 'Agent', icon: Bot },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'workspace', label: 'Workspace', icon: FileText },
-  { id: 'prompts', label: 'Prompts', icon: SlidersHorizontal },
+  { id: 'workspace', label: 'Notes', icon: FileText },
+  { id: 'prompts', label: 'Styles', icon: SlidersHorizontal },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
