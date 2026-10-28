@@ -22,7 +22,7 @@ export const DEFAULT_PREFERENCES: ProfilePreferences = {
   workdayStart: null,
   workdayEnd: null,
   preferredCalendar: 'local',
-  agentName: 'Mike',
+  agentName: '1ne',
   disabledTools: [],
 };
 
@@ -68,7 +68,7 @@ export async function getProfilePreferences(
       workdayEnd: row.workdayEnd?.trim() || null,
       preferredCalendar:
         row.preferredCalendar === 'google' ? 'google' : 'local',
-      agentName: row.agentName?.trim() || 'Mike',
+      agentName: row.agentName?.trim() || '1ne',
       disabledTools: cleanDisabledTools(row.disabledTools),
     };
   } catch {

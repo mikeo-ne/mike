@@ -62,10 +62,10 @@ export function stripMarkdownForSpeech(text: string): string {
     .trim();
 }
 
-const AUTO_SPEAK_KEY = 'mike_voice_reply';
+const AUTO_SPEAK_KEY = '1ne_voice_reply';
 
 const BRAVE_BLOCKED_REASON =
-  'Brave blocks voice typing — open Mike in Chrome or Edge to dictate.';
+  'Brave blocks voice typing — open 1ne in Chrome or Edge to dictate.';
 
 interface UseVoiceOptions {
   /** Live transcript while dictating (shown in the input). */

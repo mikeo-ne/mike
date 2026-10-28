@@ -1,12 +1,12 @@
-# Mike — Workspace AI Assistant
+# 1ne — Workspace AI Assistant
 
-Mike is your strategic personal workspace assistant in the style of FYI.AI: a
+1ne is your strategic personal workspace assistant in the style of FYI.AI: a
 split-screen web app with a streaming chat window and a real-time
-**Mike's Dashboard** (schedule + tasks + **Project Hub**), an AI agent (OpenAI,
+**1ne's Dashboard** (schedule + tasks + **Project Hub**), an AI agent (OpenAI,
 Anthropic, or any OpenAI-compatible provider) with agentic tools, long-term
 memory in Postgres, and a webhook relay for real scheduling updates.
 
-Instead of just reacting, Mike coaches you like a digital business coach:
+Instead of just reacting, 1ne coaches you like a digital business coach:
 organizing chaotic ideas, cross-referencing project deadlines with your
 calendar, pointing out conflicts, generating action plans with tracked tasks,
 and saving long-form documents to the Project Hub so they never get lost in
@@ -14,7 +14,7 @@ chat.
 
 ## Features
 
-- **Split-screen UI** — chat on one side, **Mike's Dashboard** on the other:
+- **Split-screen UI** — chat on one side, **1ne's Dashboard** on the other:
   live today-view (now/up-next, conflict warnings, 60s auto-refresh),
   **Project Hub** (generated summaries, action plans, briefs + file staging),
   active tasks with checkboxes, full calendar, workspace notes, prompt library,
@@ -67,8 +67,8 @@ Open the app and try:
 - `Add "Prepare Q4 board deck" to my tasks and find time for it Friday.`
 - `Save a project brief: website relaunch, deadline Nov 20.`
 
-Then open **Mike's Dashboard → Workspace** and save a project brief with a
-deadline — ask Mike to `summarize it` or `generate an action plan` and watch
+Then open **1ne's Dashboard → Workspace** and save a project brief with a
+deadline — ask 1ne to `summarize it` or `generate an action plan` and watch
 the document land in the **Hub** tab while he cross-references your calendar.
 
 ### Enable full AI
@@ -85,7 +85,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 #### $0 option — free AI (no credit card)
 
-Mike speaks the OpenAI API format, so any OpenAI-compatible provider works via
+1ne speaks the OpenAI API format, so any OpenAI-compatible provider works via
 `OPENAI_BASE_URL` (key goes in `OPENAI_API_KEY`, model in `AI_MODEL`):
 
 - **Groq free tier** (recommended): sign up at groq.com → API Keys → create one
@@ -108,7 +108,7 @@ Mike speaks the OpenAI API format, so any OpenAI-compatible provider works via
 
 Database, Google OAuth, and hosting all have free tiers too (PGlite is built
 in, Google Calendar API costs nothing at personal scale, Vercel/Render host
-free) — so Mike runs end-to-end for $0.
+free) — so 1ne runs end-to-end for $0.
 
 ### Use real Postgres
 
@@ -131,11 +131,11 @@ npm run db:push       # push to DATABASE_URL
 
 ```
 Browser (React 18, Tailwind, Vercel AI SDK useChat)
-  split-screen: chat + Mike's Dashboard (today, hub, calendar, workspace…)
+  split-screen: chat + 1ne's Dashboard (today, hub, calendar, workspace…)
   │  AI data stream + JSON REST
   ▼
 Next.js App Router (Node.js runtime)
-  ├─ /api/chat                  streaming agent turns (Mike core + live context)
+  ├─ /api/chat                  streaming agent turns (1ne core + live context)
   ├─ /api/sessions[ /:id]       conversation threads + transcripts
   ├─ /api/system-prompts[/:id]  additional-instructions library
   ├─ /api/workspace[/:id]       notes / projects / guidelines / briefs (Hub feed)
@@ -164,7 +164,7 @@ Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
 1. `POST /api/chat` accepts the `useChat` body (`{ messages, sessionId?,
    systemPromptId? }`, plus a legacy `{ content }` single-shot form), resolves
    the profile, loads/creates the session, loads preferences + selected
-   instructions, and composes the system prompt: **Mike's hardcoded core +
+   instructions, and composes the system prompt: **1ne's hardcoded core +
    live context** (timezone, rules, workday, preferred calendar,
    instructions).
 2. `streamText` runs the multi-step agentic loop (up to `AGENT_MAX_STEPS`):
@@ -182,9 +182,9 @@ Tool registry (src/lib/tools) ──► Postgres (Drizzle ORM, parameterized)
 |---|---|
 | `chat_sessions` | Conversation threads: owner, title, prompt ref, provider/model |
 | `conversations` | Message logs with metadata: `user` / `assistant` (+`tool_calls`) / `tool` |
-| `system_prompts` | Global seeds + user instructions appended to Mike's core |
+| `system_prompts` | Global seeds + user instructions appended to 1ne's core |
 | `user_preferences` | Timezone, scheduling rules, workday, preferred calendar, instructions |
-| `workspace_context` | Notes, projects, guidelines, briefs (Hub feed + Mike's memory) |
+| `workspace_context` | Notes, projects, guidelines, briefs (Hub feed + 1ne's memory) |
 | `tasks` | Task list: status, priority, due dates |
 | `calendar_events` | Profile-scoped local events |
 | `calendar_connections` | Encrypted external OAuth tokens (Google) |
@@ -200,7 +200,7 @@ import { defineTool } from './registry';
 
 defineTool({
   name: 'my_tool',
-  description: 'What it does (Mike reads this).',
+  description: 'What it does (1ne reads this).',
   parameters: z.object({
     input: z.string().describe('...'),
   }),
@@ -215,18 +215,18 @@ defineTool({
 
 2. Import it from `src/lib/tools/index.ts`.
 
-That's it — the tool is now available to Mike's agentic loop, listed at
+That's it — the tool is now available to 1ne's agentic loop, listed at
 `GET /api/tools`, and executable via `POST /api/tools/my_tool`
 (`{ args }`, validated + audited).
 
 ## Webhook relay
 
 Set `CALENDAR_WEBHOOK_URL` (+ optional `CALENDAR_WEBHOOK_SECRET` for the
-`X-Mike-Signature: sha256=…` header). Every calendar mutation then POSTs:
+`X-1ne-Signature: sha256=…` header). Every calendar mutation then POSTs:
 
 ```json
 {
-  "source": "mike",
+  "source": "1ne",
   "occurred_at": "2026-10-27T…",
   "action": "created | updated | rescheduled | deleted | cancelled",
   "calendar": "local | google",
@@ -272,7 +272,7 @@ finish parts) — see `src/lib/ai/sdk.ts` and `src/hooks/useAgentChat.ts`.
 
 ## Google Calendar (OAuth)
 
-Mike's built-in calendar works out of the box. To also read and write a real
+1ne's built-in calendar works out of the box. To also read and write a real
 Google Calendar:
 
 1. In **Google Cloud Console**, create a project, configure the OAuth consent
@@ -285,9 +285,9 @@ Google Calendar:
 4. Paste into **Secrets Management** (or `.env` locally):
    `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`
    (optional: `GOOGLE_REDIRECT_URI`, `APP_URL`).
-5. Open Mike → side panel → **Settings → Connections → Connect Google Calendar**,
+5. Open 1ne → side panel → **Settings → Connections → Connect Google Calendar**,
    and approve the consent screen.
-6. Ask Mike about *"my Google calendar"* — every calendar tool accepts
+6. Ask 1ne about *"my Google calendar"* — every calendar tool accepts
    `"calendar": "google"` (or set it as preferred in Settings).
 
 Tokens are AES-256-GCM encrypted at rest, scoped per profile, refreshed
@@ -297,7 +297,7 @@ grant at Google). Only least-privilege scopes are requested (`openid email` +
 
 ## Clockwork (scheduled briefings + phone calls)
 
-Mike can work while you sleep. Create scheduled tasks in the app (Dashboard →
+1ne can work while you sleep. Create scheduled tasks in the app (Dashboard →
 **Clockwork** tab) — e.g. a "Morning briefing" that pulls your agenda,
 deadlines, and conflicts, arranges meetings, and saves the result to the
 Project Hub. Delivery is Hub-only by default, or Hub + a Twilio voice call
@@ -345,7 +345,7 @@ Per-task chat-id overrides are supported; the bot must have been `/start`ed
 by the recipient first or Telegram rejects the send.
 
 Customize the agent itself in the Dashboard → **Agent** tab: display name
-(Mike answers to it), persona/instructions, and per-tool ability toggles that
+(1ne answers to it), persona/instructions, and per-tool ability toggles that
 apply to both chat and scheduled runs.
 
 ## Scripts
@@ -404,14 +404,14 @@ Drop a PDF or text file (.pdf, .txt, .md, max 4MB on the free tier) on the
 Hub's dropzone. `POST /api/workspace/ingest` parses it (pdf-parse for PDFs)
 and stores it chunked as kind='document' workspace entries, so uploaded docs
 show in the Project Hub and the agent retrieves them via
-`get_project_context` — ask Mike anything about the file's contents.
+`get_project_context` — ask 1ne anything about the file's contents.
 Scanned/image-only PDFs have no text to extract and are rejected with a
 clear message (re-export as a real PDF first).
 
 ## Voice mode ($0, in-browser)
 
 Chat has a microphone button (dictate — your words are transcribed live and
-sent automatically) and a speaker toggle in the header (Mike reads replies
+sent automatically) and a speaker toggle in the header (1ne reads replies
 aloud, Markdown stripped for natural speech). Both use the free Web Speech
 API built into the browser — no keys, no signup. Best in Chrome/Edge;
 unsupported browsers get a clear note instead of a broken button. The reply
@@ -420,7 +420,7 @@ voice defaults to on and persists per browser.
 ## Rate limits & reliability (Groq free tier)
 
 Groq's free tier budgets tokens **per model** (each model gets its own
-per-minute bucket). Mike spreads load instead of hammering one model:
+per-minute bucket). 1ne spreads load instead of hammering one model:
 
 - **Chat** sends on `AI_MODEL` (`openai/gpt-oss-120b`) and, after a 429, the
   next attempt routes to the backup model automatically. A 429 shows a plain
@@ -441,3 +441,32 @@ runs), **Agent** (your assistant's name, voice, and abilities), **Calendar**,
 Voice typing uses your browser's free speech recognition. Note: **Brave
 blocks voice typing** — dictate in Chrome or Edge instead. Spoken replies
 work in every modern browser.
+
+## 1ne — music workspace & AI assistant
+
+1ne is an all-in-one creative workspace for independent labels, producers,
+and artists: projects and releases, an asset vault, and a context-aware AI
+team in one place.
+
+### AI personas (Styles tab)
+
+Pick a persona per chat — each is a seeded system prompt, editable like any
+style:
+
+- **A&R Advisor** — honest demo feedback with scores, comps, and development advice.
+- **Music Marketing Specialist** — rollout plans, social content, playlist strategy.
+- **Legal / Contract Analyst** — plain-language deal explainer and red-flag spotter (not a lawyer; get counsel before signing).
+- **Mix / Master Consultant** — structured mix feedback, loudness targets, mastering chains.
+
+### Prompt library
+
+New chats open with one-tap starting points (press & bio, social, pitches,
+releases). Tapping one fills the input so you can replace the [BRACKETS] and
+send.
+
+### Roadmap: Supabase collaboration (PRD §2.1)
+
+`supabase/schema.sql` defines the multi-user layer (profiles, projects with
+stage pipeline, member roles, asset metadata, private storage bucket, RLS).
+Apply it in the Supabase SQL Editor, add the `SUPABASE_*` env vars, and the
+auth + vault wiring lands on top.

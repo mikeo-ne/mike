@@ -193,7 +193,7 @@ export function SettingsPanel({
         ) : (
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
             <p className="text-xs leading-relaxed text-slate-400">
-              Mike resolves &ldquo;tomorrow at 3pm&rdquo; and daily agendas in
+              1ne resolves &ldquo;tomorrow at 3pm&rdquo; and daily agendas in
               this timezone.
             </p>
             <div className="flex gap-2">
@@ -285,7 +285,7 @@ export function SettingsPanel({
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
             <label className="block">
               <span className="mb-1 block text-[11px] text-slate-500">
-                Scheduling rules (Mike always follows these)
+                Scheduling rules (1ne always follows these)
               </span>
               <textarea
                 value={schedulingRules}
@@ -340,7 +340,7 @@ export function SettingsPanel({
         </div>
         <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
           <p className="text-xs leading-relaxed text-slate-400">
-            Connect Google Calendar so Mike can read and write your real
+            Connect Google Calendar so 1ne can read and write your real
             schedule alongside the built-in calendar.
           </p>
           {connLoading ? (

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, type ToolInfo } from '@/lib/client-api';
 
 export default function AgentPanel() {
-  const [agentName, setAgentName] = useState('Mike');
+  const [agentName, setAgentName] = useState('1ne');
   const [persona, setPersona] = useState('');
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [disabled, setDisabled] = useState<string[]>([]);
@@ -20,7 +20,7 @@ export default function AgentPanel() {
           api.getSettings(),
           api.listTools(),
         ]);
-        setAgentName(settings.agentName || 'Mike');
+        setAgentName(settings.agentName || '1ne');
         setPersona(settings.systemInstructions || '');
         setTools(catalogue);
         setDisabled(settings.disabledTools ?? []);
@@ -48,7 +48,7 @@ export default function AgentPanel() {
         systemInstructions: persona.trim() || null,
         disabledTools: disabled,
       });
-      setAgentName(updated.agentName || 'Mike');
+      setAgentName(updated.agentName || '1ne');
       setPersona(updated.systemInstructions || '');
       setDisabled(updated.disabledTools ?? []);
       setStatus('Agent updated. It applies to new chats and briefings.');
@@ -66,7 +66,7 @@ export default function AgentPanel() {
   return (
     <div className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-        Customize Mike
+        Customize 1ne
       </h3>
       {error && (
         <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-[11px] text-red-200">
@@ -85,7 +85,7 @@ export default function AgentPanel() {
           onChange={(e) => setAgentName(e.target.value)}
           maxLength={40}
           className="mt-1 w-full rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100"
-          placeholder="Mike"
+          placeholder="1ne"
         />
       </label>
       <label className="block text-[11px] text-zinc-400">
@@ -100,7 +100,7 @@ export default function AgentPanel() {
       </label>
       <div>
         <p className="mb-1 text-[11px] text-zinc-400">
-          Abilities — uncheck any tool Mike must never use
+          Abilities — uncheck any tool 1ne must never use
         </p>
         <div className="space-y-1">
           {tools.map((tool) => (

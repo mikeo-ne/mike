@@ -9,8 +9,12 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
+  Mail,
+  Megaphone,
   Menu,
   Mic,
+  Music,
+  Newspaper,
   PanelRight,
   RotateCcw,
   Send,
@@ -26,18 +30,42 @@ import type { ChatMessageView, ChatStatus } from '@/hooks/useAgentChat';
 import { useVoice } from '@/hooks/useVoice';
 import { MessageBubble } from './MessageBubble';
 
-const SUGGESTIONS = [
+const PROMPT_LIBRARY: Array<{
+  category: string;
+  icon: typeof FileText;
+  prompts: string[];
+}> = [
   {
-    icon: FileText,
-    label: 'Summarize Project Apollo and save it to the hub',
+    category: 'Press & bio',
+    icon: Newspaper,
+    prompts: [
+      'Write a 150-word artist bio for [ARTIST], blending [GENRES] — highlight [KEY STORY].',
+      'Write a press release for the single [SONG] by [ARTIST], out [DATE] on [LABEL].',
+    ],
   },
   {
-    icon: ListChecks,
-    label: 'Generate an action plan for the product launch',
+    category: 'Social content',
+    icon: Megaphone,
+    prompts: [
+      'Write 3 TikTok captions for a studio clip of [SONG] (vibe: [VIBE]) with hashtags.',
+      'Write an Instagram announcement post for [RELEASE] dropping [DATE].',
+    ],
   },
   {
-    icon: CalendarDays,
-    label: "What's on my calendar this week?",
+    category: 'Pitches',
+    icon: Mail,
+    prompts: [
+      'Write a 120-word pitch email to a Spotify playlist curator for [SONG] by [ARTIST] (sounds like [REFERENCES]).',
+      'Write a short pitch to a music blogger premiering [SONG] — angle: [ANGLE].',
+    ],
+  },
+  {
+    category: 'Releases',
+    icon: Music,
+    prompts: [
+      'Write a streaming-platform song description for [SONG] by [ARTIST] ([GENRE], [MOOD]).',
+      'Draft a 4-week rollout plan for [RELEASE] with timeline, content, and pitch targets.',
+    ],
   },
 ];
 
@@ -238,20 +266,39 @@ export function ChatInterface(props: ChatInterfaceProps) {
                 Hi, I&apos;m {agentName}
               </h2>
               <p className="mt-1 max-w-md text-sm text-slate-400">
-                Your strategic workspace assistant — I coach, organize,
-                schedule, and track every action item to done.
+                Your music workspace assistant — projects, releases, and an
+                AI team that speaks the industry. Pick a starting point:
               </p>
-              <div className="mt-6 grid w-full max-w-lg gap-2">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    onClick={() => onSend(s.label)}
-                    className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-indigo-500/50 hover:bg-slate-900"
-                  >
-                    <s.icon className="h-4 w-4 shrink-0 text-indigo-400" />
-                    {s.label}
-                  </button>
+              <div className="mt-6 grid w-full max-w-lg gap-4 text-left">
+                {PROMPT_LIBRARY.map((section) => (
+                  <div key={section.category}>
+                    <div className="flex items-center gap-1.5 px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <section.icon className="h-3.5 w-3.5 text-indigo-400" />
+                      {section.category}
+                    </div>
+                    <div className="grid gap-2">
+                      {section.prompts.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => {
+                            setDraft(p);
+                            requestAnimationFrame(() => {
+                              const el = inputRef.current;
+                              if (el) {
+                                el.style.height = 'auto';
+                                el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                                el.focus();
+                              }
+                            });
+                          }}
+                          className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2.5 text-left text-sm text-slate-200 transition hover:border-indigo-500/50 hover:bg-slate-900"
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

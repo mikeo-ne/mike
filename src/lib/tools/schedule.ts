@@ -42,7 +42,7 @@ const calendarSource = z
   .optional()
   .default('local')
   .describe(
-    'Which calendar to use: "local" (Mike\'s built-in calendar) or "google" (the connected Google Calendar).',
+    'Which calendar to use: "local" (1ne\'s built-in calendar) or "google" (the connected Google Calendar).',
   );
 
 type TimelineEvent = LocalEventDto & { calendar: 'local' | 'google' };

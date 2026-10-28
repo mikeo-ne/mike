@@ -7,14 +7,14 @@
  *  - conversations        — message logs with metadata: user / assistant
  *                             (+tool_calls JSON) / tool results.
  *  - system_prompts       — reusable additional instructions (global seeds
- *                             + user created). Mike's core persona is
+ *                             + user created). 1ne's core persona is
  *                             hardcoded in src/lib/ai/executive.ts.
  *  - user_preferences     — per-profile memory: timezone, scheduling rules,
  *                             workday bounds, preferred calendar, and personal
  *                             system instructions.
  *  - workspace_context    — user notes, project guidelines, and briefs that
- *                             Mike references for background and deadlines.
- *  - tasks                — active task list surfaced on Mike's Dashboard.
+ *                             1ne references for background and deadlines.
+ *  - tasks                — active task list surfaced on 1ne's Dashboard.
  *  - calendar_events      — local events managed through tools.
  *  - calendar_connections — encrypted external OAuth tokens (Google).
  *  - tool_executions      — audit log of every tool invocation.
@@ -139,14 +139,14 @@ export const userPreferences = pgTable('user_preferences', {
   timezone: text('timezone'),
   /** Freeform scheduling rules, e.g. "no meetings before 9am". */
   schedulingRules: text('scheduling_rules'),
-  /** Personal instructions appended to Mike's system prompt. */
+  /** Personal instructions appended to 1ne's system prompt. */
   systemInstructions: text('system_instructions'),
   /** Workday bounds as "HH:MM" for proactive slot proposals. */
   workdayStart: text('workday_start'),
   workdayEnd: text('workday_end'),
   /** Default calendar source for tools: "local" | "google". */
   preferredCalendar: text('preferred_calendar').notNull().default('local'),
-  /** Agent display name (null = "Mike"). */
+  /** Agent display name (null = "1ne"). */
   agentName: text('agent_name'),
   /** Tool names the agent loop must skip (null = all enabled). */
   disabledTools: jsonb('disabled_tools').$type<string[]>(),

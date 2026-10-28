@@ -195,7 +195,7 @@ function demoReply(input: string): string {
   const quoted =
     input.length > 200 ? `"${input.slice(0, 200)}…"` : input ? `"${input}"` : '';
   return [
-    `Hi! I'm **Mike**, your workspace AI assistant — currently running in **demo mode** (no API key configured), so I can't call the real AI or run tools from here.`,
+    `Hi! I'm **1ne**, your workspace AI assistant — currently running in **demo mode** (no API key configured), so I can't call the real AI or run tools from here.`,
     ``,
     quoted ? `You said: ${quoted}` : ``,
     `What I can do once an API key is added:`,
@@ -223,7 +223,7 @@ export function createDemoModel(): LanguageModel {
   const buildReply = (prompt: readonly unknown[]): string =>
     demoReply(lastUserText(prompt));
   return new MockLanguageModelV1({
-    provider: 'mike-demo',
+    provider: '1ne-demo',
     modelId: 'demo-mode',
     doGenerate: async (options) => ({
       text: buildReply(options.prompt),

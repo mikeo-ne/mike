@@ -273,7 +273,7 @@ export default function ClockworkPanel() {
 
       {tasks.length === 0 && !formOpen && (
         <p className="text-xs text-zinc-500">
-          No scheduled tasks yet. Create the morning briefing to have Mike
+          No scheduled tasks yet. Create the morning briefing to have 1ne
           work while you sleep.
         </p>
       )}

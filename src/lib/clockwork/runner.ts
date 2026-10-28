@@ -165,7 +165,7 @@ export async function runScheduledTask(taskId: string): Promise<TaskRunResult> {
     });
 
     const prefs = await getProfilePreferences(task.profileId);
-    const agentName = prefs.agentName || 'Mike';
+    const agentName = prefs.agentName || '1ne';
     const provider = defaultProvider();
     // Clockwork runs on its own model bucket so a long briefing never eats
     // the chat budget (and a busy chat never starves the briefing).

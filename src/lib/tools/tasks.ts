@@ -1,6 +1,6 @@
 /**
- * Task management tool — lets Mike capture, track, and complete the action
- * items shown on Mike's Dashboard.
+ * Task management tool — lets 1ne capture, track, and complete the action
+ * items shown on 1ne's Dashboard.
  */
 import { z } from 'zod';
 import {
@@ -36,7 +36,7 @@ export const manageTasksSchema = z.object({
 defineTool({
   name: 'manage_tasks',
   description:
-    'Manage the user\'s task list (shown on Mike\'s Dashboard). When the user mentions something to do, create a task for it and propose a time slot; use list to review open work before planning the day.',
+    'Manage the user\'s task list (shown on 1ne\'s Dashboard). When the user mentions something to do, create a task for it and propose a time slot; use list to review open work before planning the day.',
   parameters: manageTasksSchema,
   execute: async (args, ctx) => {
     switch (args.action) {

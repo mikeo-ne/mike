@@ -252,7 +252,7 @@ export function useAgentChat(opts: UseAgentChatOptions) {
   const rawError = errorDismissed ? null : (chat.error?.message ?? loadError);
   const friendlyError =
     rawError && /rate.?limit|429|too many requests/i.test(rawError)
-      ? "Mike hit Groq's free speed limit — wait about 20 seconds, then tap Retry."
+      ? "1ne hit Groq's free speed limit — wait about 20 seconds, then tap Retry."
       : rawError;
 
   return {
