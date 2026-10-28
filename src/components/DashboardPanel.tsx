@@ -318,7 +318,7 @@ export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) 
             )}
             {events.length === 0 ? (
               <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-4 text-center text-xs text-slate-500">
-                Nothing scheduled today. Ask Mike to plan your day.
+                Nothing scheduled today. Ask 1ne to plan your day.
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -386,7 +386,7 @@ export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) 
           </div>
           {activeTasks.length === 0 ? (
             <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-4 text-center text-xs text-slate-500">
-              All clear. Tell Mike what to track next.
+              All clear. Tell 1ne what to track next.
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -443,7 +443,7 @@ export function DashboardPanel({ refreshKey, onNavigate }: DashboardPanelProps) 
           )}
           <div className="flex items-center gap-1.5 px-1 text-[11px] text-slate-500">
             <CheckSquare className="h-3 w-3" />
-            Mike can create and complete these from chat.
+            1ne can create and complete these from chat.
           </div>
         </div>
       </section>

@@ -14,7 +14,7 @@ import {
   pickModel,
   reportRateLimit,
 } from '@/lib/ai/config';
-import { MIKE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
+import { ONE_EXECUTIVE_PROMPT } from '@/lib/ai/executive';
 import {
   buildSdkTools,
   resolveChatModel,
@@ -173,7 +173,7 @@ export async function POST(req: Request) {
     if (rows[0]) extraPrompt = { name: rows[0].name, content: rows[0].content };
   }
 
-  // --- Compose the system prompt: hardcoded Mike core + live context. ---
+  // --- Compose the system prompt: hardcoded 1ne core + live context. ---
   const prefs = await getProfilePreferences(profileId);
   const userTimezone = prefs.timezone;
   const contextBits: string[] = [];
@@ -205,15 +205,15 @@ export async function POST(req: Request) {
       `Additional personal instructions:\n${prefs.systemInstructions}`,
     );
   }
-  if (prefs.agentName && prefs.agentName !== 'Mike') {
+  if (prefs.agentName && prefs.agentName !== '1ne') {
     contextBits.push(
       `The user calls you "${prefs.agentName}" — refer to yourself by that name.`,
     );
   }
   const system =
     contextBits.length > 0
-      ? `${MIKE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`
-      : MIKE_EXECUTIVE_PROMPT;
+      ? `${ONE_EXECUTIVE_PROMPT}\n\n[Live context]\n${contextBits.join('\n\n')}`
+      : ONE_EXECUTIVE_PROMPT;
 
   // --- Load bounded history + persist the user message. ---
   const historyRows = await db

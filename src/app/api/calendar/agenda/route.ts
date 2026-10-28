@@ -7,7 +7,7 @@ import { getProfileTimezone } from '@/lib/settings';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** REST façade over get_daily_agenda — powers Mike's Dashboard. */
+/** REST façade over get_daily_agenda — powers 1ne's Dashboard. */
 export async function GET(req: Request) {
   const { profileId, setCookie } = resolveProfile(req);
   const url = new URL(req.url);

@@ -1,8 +1,8 @@
 {
-  "name": "mike",
+  "name": "1ne",
   "version": "0.1.0",
   "private": true,
-  "description": "Mike — Workspace AI Assistant: fullstack personal workspace assistant with streaming chat, agentic tools, project hub, calendar, and Postgres storage.",
+  "description": "1ne — Workspace AI Assistant: fullstack personal workspace assistant with streaming chat, agentic tools, project hub, calendar, and Postgres storage.",
   "engines": {
     "node": ">=18.18.0"
   },

@@ -155,7 +155,7 @@ export function WorkspacePanel({ refreshKey }: { refreshKey: number }) {
       </div>
 
       <p className="px-1 pb-2 text-[11px] leading-relaxed text-slate-500">
-        Notes, projects, and briefs Mike references for context and deadlines.
+        Notes, projects, and briefs 1ne references for context and deadlines.
       </p>
 
       {showForm && (
@@ -238,7 +238,7 @@ export function WorkspacePanel({ refreshKey }: { refreshKey: number }) {
         ) : visible.length === 0 ? (
           <p className="px-1 py-6 text-center text-xs text-slate-500">
             {items.length === 0
-              ? 'Empty workspace — add a project brief so Mike can cross-reference deadlines.'
+              ? 'Empty workspace — add a project brief so 1ne can cross-reference deadlines.'
               : 'No matches.'}
           </p>
         ) : (

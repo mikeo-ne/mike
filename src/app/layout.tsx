@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Mike — Workspace AI Assistant',
+  title: '1ne — Music Workspace & AI Assistant',
   description:
-    'Mike is your strategic personal workspace AI assistant: chat, agentic tools, project hub, calendar, tasks, workspace memory, and Postgres storage.',
+    '1ne is your music workspace and AI assistant: projects, releases, an AI team (A&R, marketing, legal, mix), calendar, tasks, and memory.',
 };
 
 export default function RootLayout({

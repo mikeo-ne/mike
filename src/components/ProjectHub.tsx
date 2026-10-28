@@ -37,7 +37,7 @@ function timeAgo(iso: string): string {
 }
 
 /**
- * Project Hub — the right-side context panel where Mike's long-form output
+ * Project Hub — the right-side context panel where 1ne's long-form output
  * lives: project summaries, action plans, briefs, and meeting notes, saved
  * via the summarizeProject / generateActionPlan tools so they never get lost
  * in the scrolling chat window.
@@ -112,7 +112,7 @@ export function ProjectHub({ refreshKey }: { refreshKey: number }) {
 
       {!openItem && (
         <p className="px-1 pb-2 text-[11px] leading-relaxed text-slate-500">
-          Long-form output from Mike — summaries, action plans, and briefs —
+          Long-form output from 1ne — summaries, action plans, and briefs —
           saved here automatically.
         </p>
       )}
@@ -150,7 +150,7 @@ export function ProjectHub({ refreshKey }: { refreshKey: number }) {
           <div className="rounded-xl border border-dashed border-slate-700 px-3 py-8 text-center">
             <FileText className="mx-auto h-6 w-6 text-slate-600" />
             <p className="mt-2 text-xs text-slate-400">
-              No documents yet. Ask Mike to{' '}
+              No documents yet. Ask 1ne to{' '}
               <span className="text-slate-200">“summarize a project”</span> or{' '}
               <span className="text-slate-200">“generate an action plan”</span>{' '}
               and it will land here.

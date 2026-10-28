@@ -22,7 +22,7 @@ export default function Home() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   /** System prompt chosen for the *next* new chat. */
   const [pendingPromptId, setPendingPromptId] = useState<string | null>(null);
-  const [agentName, setAgentName] = useState('Mike');
+  const [agentName, setAgentName] = useState('1ne');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
@@ -38,7 +38,7 @@ export default function Home() {
     if (status === 'google-connected') {
       setCalendarNotice({
         kind: 'ok',
-        text: 'Google Calendar connected — Mike can now read and write it.',
+        text: 'Google Calendar connected — 1ne can now read and write it.',
       });
       setCalendarRefreshKey((k) => k + 1);
     } else if (status === 'google-error') {
@@ -134,7 +134,7 @@ export default function Home() {
     };
   }, []);
 
-  // Split-screen by default on wide displays: chat + Mike's Dashboard.
+  // Split-screen by default on wide displays: chat + 1ne's Dashboard.
   useEffect(() => {
     try {
       if (window.matchMedia('(min-width: 1280px)').matches) {

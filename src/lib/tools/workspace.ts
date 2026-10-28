@@ -1,5 +1,5 @@
 /**
- * Workspace context tool — lets Mike reference the user's notes, projects,
+ * Workspace context tool — lets 1ne reference the user's notes, projects,
  * guidelines, briefs, and uploaded documents (workspace_context table) for
  * background and deadlines, and cross-reference them with the calendar.
  */

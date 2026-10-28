@@ -75,7 +75,7 @@ export function RightPanel(props: RightPanelProps) {
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 pb-1.5 pt-2.5">
         <LayoutDashboard className="h-4 w-4 text-indigo-400" />
         <span className="text-sm font-bold tracking-tight text-slate-50">
-          Mike&apos;s Dashboard
+          1ne&apos;s Dashboard
         </span>
         <span className="flex items-center gap-1 text-[10px] text-emerald-300">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />

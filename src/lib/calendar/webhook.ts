@@ -51,7 +51,7 @@ export async function forwardCalendarPayload(
 ): Promise<ForwardResult> {
   const url = process.env.CALENDAR_WEBHOOK_URL?.trim();
   const envelope = {
-    source: 'mike',
+    source: '1ne',
     occurred_at: new Date().toISOString(),
     ...payload,
   };
@@ -74,11 +74,11 @@ export async function forwardCalendarPayload(
   const body = JSON.stringify(envelope);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': 'mike-webhook/1.0',
+    'User-Agent': '1ne-webhook/1.0',
   };
   const secret = process.env.CALENDAR_WEBHOOK_SECRET?.trim();
   if (secret) {
-    headers['X-Mike-Signature'] = `sha256=${sign(body, secret)}`;
+    headers['X-1ne-Signature'] = `sha256=${sign(body, secret)}`;
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
