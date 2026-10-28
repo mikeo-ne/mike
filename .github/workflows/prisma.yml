@@ -20,6 +20,12 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    env:
+      # Dummy connection string: validate/generate/diff never open a
+      # connection, but the CLI requires the datasource env var to exist.
+      POSTGRES_URL: postgresql://user:pass@localhost:5432/db
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +33,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx prisma validate
-      - run: npx prisma generate
-      - run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql && wc -l /tmp/ddl.sql
+      - run: npx prisma validate 2>&1 | tee /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
+      - run: npx prisma generate 2>&1 | tee -a /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
+      - name: Prisma migrate diff
+        run: |
+          set -o pipefail
+          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql 2> /tmp/diff.err
+          code=$?
+          cat /tmp/diff.err >> /tmp/prisma.log
+          wc -l /tmp/ddl.sql >> /tmp/prisma.log
+          exit $code
+      # The sandbox cannot read Actions logs (blocked host), so failures
+      # report back as a PR comment instead.
+      - name: Report Prisma failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## Prisma CI failure output"
+            echo '```'
+            cat /tmp/prisma.log 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md
