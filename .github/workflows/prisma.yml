@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'prisma/**'
+      - 'prisma.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/prisma.yml'
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - 'prisma/**'
+      - 'prisma.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/prisma.yml'
@@ -35,13 +37,16 @@ jobs:
       - run: npm ci
       - run: npx prisma validate 2>&1 | tee /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
       - run: npx prisma generate 2>&1 | tee -a /tmp/prisma.log; test ${PIPESTATUS[0]} -eq 0
+      # NOTE: Actions runs steps with `bash -e`; `set +e` keeps the capture
+      # lines below alive when the diff itself fails.
       - name: Prisma migrate diff
         run: |
-          set -o pipefail
-          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql 2> /tmp/diff.err
+          set +e
+          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql 2>> /tmp/prisma.log
           code=$?
-          cat /tmp/diff.err >> /tmp/prisma.log
-          wc -l /tmp/ddl.sql >> /tmp/prisma.log
+          wc -l /tmp/ddl.sql >> /tmp/prisma.log 2>&1
+          echo "diff exit: $code" >> /tmp/prisma.log
+          if [ $code -ne 0 ]; then echo "--- ddl.sql head ---" >> /tmp/prisma.log; head -30 /tmp/ddl.sql >> /tmp/prisma.log 2>&1; fi
           exit $code
       # The sandbox cannot read Actions logs (blocked host), so failures
       # report back as a PR comment instead.
