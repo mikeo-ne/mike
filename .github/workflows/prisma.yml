@@ -1,0 +1,32 @@
+name: prisma
+
+# Gates every schema change: the sandbox has no Prisma engine downloads, so
+# GitHub runners (full internet) are the durable verification gate.
+on:
+  pull_request:
+    paths:
+      - 'prisma/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/prisma.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'prisma/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/prisma.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma generate
+      - run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /tmp/ddl.sql && wc -l /tmp/ddl.sql
