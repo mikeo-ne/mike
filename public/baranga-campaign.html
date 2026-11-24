@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d16">
+  <title>Baranga — 12-Week Campaign Presentation</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b0d16; --panel:#151928; --line:#2a3145; --blue:#56ccf2; --lime:#c8f169; --text:#f5f7fc; --muted:#a7b0c3; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 Arial, sans-serif; }
+    main { width:min(1100px,94vw); margin:36px auto; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:20px; }
+    h1 { font-size:clamp(22px,4vw,34px); line-height:1.15; margin:0 0 6px; }
+    p { color:var(--muted); margin:0; }
+    nav { display:flex; flex-wrap:wrap; gap:10px; }
+    a.button { display:inline-block; padding:12px 17px; border-radius:9px; background:var(--blue); color:var(--bg); font-weight:700; text-decoration:none; }
+    a.button.alt { background:var(--lime); }
+    a.button:hover { filter:brightness(1.08); }
+    .viewer { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px; }
+    iframe { width:100%; height:min(76vh,850px); min-height:520px; border:0; border-radius:8px; background:#fff; }
+    .fallback { margin-top:12px; font-size:14px; }
+    @media(max-width:600px) { main{margin:18px auto} header{align-items:flex-start} iframe{min-height:65vh;height:65vh} }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Baranga — 12-Week Campaign</h1>
+        <p>Open the PDF below in your browser or download the editable PowerPoint.</p>
+      </div>
+      <nav aria-label="Presentation files">
+        <a class="button" href="/downloads/Baranga_12_Week_Campaign.pptx" download>Download PowerPoint</a>
+        <a class="button alt" href="/downloads/Baranga_12_Week_Campaign_Preview.pdf" target="_blank" rel="noopener">Open PDF preview</a>
+      </nav>
+    </header>
+    <section class="viewer" aria-label="PDF presentation preview">
+      <iframe src="/downloads/Baranga_12_Week_Campaign_Preview.pdf#view=FitH" title="Baranga 12-week campaign PDF preview"></iframe>
+    </section>
+    <p class="fallback">If the embedded preview is unavailable on your device, use “Open PDF preview” above. The PowerPoint link downloads the editable .pptx file.</p>
+  </main>
+</body>
+</html>
